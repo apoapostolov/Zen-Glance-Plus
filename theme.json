@@ -4,7 +4,7 @@
   "description": "Choose which pages open in a Glance over the page you are reading.",
   "author": "Apostol Apostolov",
   "ai": "yes",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "license": "MIT",
   "homepage": "https://github.com/apoapostolov/Zen-Glance-Plus",
   "readme": "https://raw.githubusercontent.com/apoapostolov/Zen-Glance-Plus/main/README.md",

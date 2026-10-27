@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.18 — 2026-10-27
+
+- The Glance's button strip gains **Copy link**, next to close, expand and split. It runs Zen's own copy action, `gZenCommonActions.copyCurrentURLToClipboard`, so the address is copied the way the browser copies it: readable form, tracking parameters stripped, and the usual "copied" toast with its Share button. Zen builds that strip from a template for every Glance, so the button is added there once and appears in the peek and expanded states alike.
+- If the build has no such action, or the Glance's page is not the selected one, the button does the copy itself through the same clipboard service and the same readable-link rules, rather than falling back to a raw string.
+
 ## 1.0.17 — 2026-10-27
 
 - The Sites table was missing from the settings page after an install and a fresh session. The mod asked once, then watched the page for changes, which covers a page that is still drawing — but a restored settings tab draws before the mod is reached, and after that nothing changes, so the one failed attempt stood. It now asks again on a timer for fifteen seconds, and looks for a settings tab again for twenty seconds after the window starts, which also covers a tab whose content window is replaced by the real page.

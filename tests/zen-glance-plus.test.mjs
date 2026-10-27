@@ -113,6 +113,7 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
 
   const gBrowser = {
     selectedTab: normalTab,
+    selectedBrowser: null,
     tabContainer,
     tabbox: { getBoundingClientRect: () => ({ width: 1200, height: 800 }) },
     tabs: world.tabs,
@@ -215,6 +216,11 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     innerHeight: 800,
     addEventListener: (type, fn) => {
       windowListeners.set(type, fn);
+    },
+    removeEventListener: (type, fn) => {
+      if (windowListeners.get(type) === fn) {
+        windowListeners.delete(type);
+      }
     },
     openLinkIn(url, where, params) {
       openLinkInCalls.push({ url, where, params });
@@ -618,6 +624,101 @@ test("a link opened from a page is answered with the address Zen kept", () => {
 
   const listing = { spec: "https://www.reddit.com/r/zen/" };
   assert.equal(world.manager.shouldOpenTabInGlance(opened, listing), false);
+});
+
+test("the glance button strip gets one copy button, once", () => {
+  const world = createWorld();
+  const made = [];
+  const element = name => {
+    const node = {
+      kind: name,
+      attrs: {},
+      children: [],
+      set className(value) {
+        this.attrs.class = value;
+      },
+      get className() {
+        return this.attrs.class ?? "";
+      },
+      setAttribute: (key, value) => {
+        node.attrs[key] = String(value);
+      },
+      getAttribute: key => node.attrs[key] ?? null,
+      appendChild: child => {
+        node.children.push(child);
+        return child;
+      },
+    };
+    made.push(node);
+    return node;
+  };
+  const documentDouble = { createXULElement: element };
+  const container = {
+    children: [],
+    ownerDocument: documentDouble,
+    querySelector: selector =>
+      selector === ".zgp-glance-copy"
+        ? container.children.find(child => child.className.includes("zgp-glance-copy")) ?? null
+        : null,
+    appendChild: child => {
+      container.children.push(child);
+      return child;
+    },
+  };
+
+  const first = world.api.addGlanceCopyButton(container);
+  assert.ok(first, "a button is added");
+  assert.match(first.className, /zgp-glance-copy/);
+  assert.equal(first.getAttribute("data-act"), "glancecopy");
+  assert.equal(first.getAttribute("aria-label"), "Copy link");
+  assert.equal(first.children.length, 1, "it carries an icon");
+  assert.equal(first.children[0].kind, "image");
+
+  assert.equal(world.api.addGlanceCopyButton(container), null, "adding it twice changes nothing");
+  assert.equal(container.children.length, 1);
+});
+
+test("the glance copy button asks Zen's own copy action", () => {
+  const world = createWorld();
+  const browser = { currentURI: { spec: "https://example.org/a" } };
+  world.gBrowser.selectedBrowser = browser;
+  let calls = 0;
+  world.window.gZenCommonActions = {
+    copyCurrentURLToClipboard: () => {
+      calls += 1;
+    },
+  };
+
+  assert.equal(world.api.copyGlanceUrl(browser), true);
+  assert.equal(calls, 1, "the toolbar action is reused, not re-implemented");
+});
+
+test("a click on the glance copy button copies the glance's own page", () => {
+  const world = createWorld();
+  const browser = { currentURI: { spec: "https://example.org/glance" } };
+  world.gBrowser.selectedBrowser = browser;
+  world.window.gZenCommonActions = { copyCurrentURLToClipboard: () => {} };
+
+  const button = {
+    closest: selector => (selector === ".zgp-glance-copy" ? button : null),
+    parentElement: null,
+  };
+  const host = {
+    querySelector: selector => (selector === "browser" ? browser : null),
+  };
+  button.parentElement = {
+    closest: selector => (selector === ".browserSidebarContainer" ? host : null),
+  };
+  let prevented = 0;
+  world.api.onGlanceCopyClick({
+    target: button,
+    preventDefault: () => {
+      prevented += 1;
+    },
+    stopPropagation: () => {},
+  });
+
+  assert.equal(prevented, 1, "the click is claimed");
 });
 
 test("a tab the browser opens for itself is not a Glance", async () => {

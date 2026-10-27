@@ -78,6 +78,7 @@ Patterns match the address path and query, never the domain, because the row alr
 - A link that opens a tab from inside a page — `target="_blank"`, a middle click, `window.open` — is judged on the address it will load, not the empty tab that carries it. That is what makes a post clicked inside its own site's essential open as a Glance, which Zen's own rule refuses because the domains match.
 - One thing is out of reach: a plain left click that navigates the tab you are already on creates no tab at all, so there is nothing to divert. **Same Tab Pages** and a row's **Link** switch cover the page-initiated opens that do reach the browser window, such as a context menu's "open link in this tab". Nothing typed in the address bar is affected.
 - Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
+- The Glance's own button strip carries a fourth button, **Copy link**. It copies the address of the page on screen with the browser's own copy action, the same one behind Zen's copy-current-address shortcut and its address bar: the readable form of the link, with tracking parameters stripped as Zen strips them, and the usual confirmation toast. It is there in both states, so it also works while the Glance is only peeking.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
 - Nothing is converted while Zen runs a Glance animation.
 

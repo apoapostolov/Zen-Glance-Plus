@@ -807,6 +807,137 @@
     Promise.resolve().then(() => openGlanceOver(tab, plan));
   }
 
+  /* ------------------------------------------------------- glance copy link */
+
+  const GLANCE_COPY = "zgp-glance-copy";
+  const COPY_ICON =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +
+        '<path fill="context-fill" d="M5 1a2 2 0 0 0-2 2v6h1.5V3a.5.5 0 0 1 .5-.5h4V1H5Z"/>' +
+        '<path fill="context-fill" d="M8 4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8Z"/>' +
+        "</svg>"
+    );
+
+  /**
+   * Add the copy button to a glance's button strip. Zen clones this strip from
+   * a template for every Glance, so adding it to the container leaves it in
+   * both the peek and the expanded state.
+   */
+  function addGlanceCopyButton(container) {
+    const doc = container?.ownerDocument ?? document;
+    if (!container?.querySelector || container.querySelector(`.${GLANCE_COPY}`)) {
+      return null;
+    }
+    const button = doc.createXULElement("toolbarbutton");
+    button.className = `no-squircles ${GLANCE_COPY} toolbarbutton-1`;
+    button.setAttribute("data-act", "glancecopy");
+    button.setAttribute("aria-label", "Copy link");
+    button.setAttribute("title", "Copy link");
+    const image = doc.createXULElement("image");
+    image.setAttribute("src", COPY_ICON);
+    image.setAttribute("style", "width: 100%; height: 100%; -moz-context-properties: fill; fill: currentColor;");
+    button.appendChild(image);
+    container.appendChild(button);
+    return button;
+  }
+
+  function installGlanceCopyButton() {
+    try {
+      const container = document
+        .getElementById("zen-glance-sidebar-template")
+        ?.content?.querySelector(".zen-glance-sidebar-container");
+      return addGlanceCopyButton(container);
+    } catch (e) {
+      trace(`glance copy: no template ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  /** The page the glance is showing, which is not always the selected tile. */
+  function glanceBrowserOf(button) {
+    const host = button?.closest?.(".browserSidebarContainer");
+    const browser = host?.querySelector?.("browser");
+    if (browser) {
+      return browser;
+    }
+    return gBrowser.selectedBrowser ?? null;
+  }
+
+  /**
+   * The address bar's own copy, for the page the glance is showing. Zen's
+   * action is the same one its keyboard shortcut uses, so it is preferred; it
+   * reads the selected browser, so it is only used when that is this page.
+   */
+  function copyGlanceUrl(browser) {
+    const actions = window.gZenCommonActions;
+    if (actions?.copyCurrentURLToClipboard && gBrowser.selectedBrowser === browser) {
+      actions.copyCurrentURLToClipboard();
+      return true;
+    }
+
+    const spec = String(browser?.currentURI?.spec ?? browser?.userTypedValue ?? "");
+    if (!spec) {
+      return false;
+    }
+    let uri = null;
+    try {
+      uri = Services.io.newURI(spec);
+    } catch (e) {
+      return false;
+    }
+    let copyURI = uri;
+    try {
+      const stripper = Cc["@mozilla.org/url-query-string-stripper;1"].getService(
+        Ci.nsIURLQueryStringStripper
+      );
+      copyURI = stripper.stripForCopyOrShare(uri) ?? uri;
+    } catch (e) {
+      /* an older build without the stripper copies the address as it is */
+    }
+    let readable = copyURI;
+    try {
+      readable = gURLBar.makeURIReadable(copyURI) ?? copyURI;
+    } catch (e) {
+      /* readable form is a nicety, the URI is the answer */
+    }
+    let text = readable.displaySpec;
+    try {
+      if (
+        Services.prefs.getBoolPref("browser.urlbar.decodeURLsOnCopy", false) &&
+        !readable.schemeIs("data")
+      ) {
+        text = decodeURI(text);
+      }
+    } catch (e) {
+      /* the address as it stands */
+    }
+    try {
+      Cc["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(Ci.nsIClipboardHelper)
+        .copyString(text);
+    } catch (e) {
+      trace(`glance copy: no clipboard ${e?.message ?? e}`);
+      return false;
+    }
+    try {
+      gZenUIManager.showToast?.("zen-copy-current-url-confirmation", { timeout: 3000 });
+    } catch (e) {
+      /* the copy happened, the toast is a courtesy */
+    }
+    return true;
+  }
+
+  function onGlanceCopyClick(event) {
+    const button = event.target?.closest?.(`.${GLANCE_COPY}`);
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    copyGlanceUrl(glanceBrowserOf(button));
+  }
+
   function onTabSelect(event) {
     const tab = event.target;
     if (!tab?.hasAttribute?.("glance-id")) {
@@ -1593,6 +1724,8 @@
     gBrowser.tabContainer.addEventListener("TabSelect", onTabSelect, true);
     watchPreferencesTabs();
     scanPreferencesTabs();
+    installGlanceCopyButton();
+    window.addEventListener("click", onGlanceCopyClick, true);
     // A restored settings tab can be reached through a content window that the
     // real page later replaces, and that new window is not the one that was
     // hooked. Look again for a while after start, then let it be.
@@ -1673,6 +1806,7 @@
       gBrowser.removeTabsProgressListener?.(state.progressListener);
       state.progressListener = null;
     }
+    window.removeEventListener("click", onGlanceCopyClick, true);
     gBrowser.tabContainer.removeEventListener("TabOpen", onTabOpen, true);
     gBrowser.tabContainer.removeEventListener("TabSelect", onTabSelect, true);
     if (state.prefsScan) {
@@ -1725,6 +1859,12 @@
     fillRows,
     injectTable,
     hookPreferences,
+    addGlanceCopyButton,
+    installGlanceCopyButton,
+    copyGlanceUrl,
+    glanceBrowserOf,
+    onGlanceCopyClick,
+    GLANCE_COPY,
     rerender,
     onTableClick,
     onTableChange,
