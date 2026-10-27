@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 — 2026-10-27
+
+- The mod ships with sites already configured: Reddit, X, Facebook, YouTube, Instagram, GitHub and Hacker News, each row narrowed to the site's content pages so a post glances while a listing, front page or settings page opens normally. The list is written once, on the first start after install, so a profile that already has its own rows keeps them and a row you delete stays deleted.
+
 ## 1.0.0 — 2026-10-27
 
 First public release. Glance Plus opens a new tab as a Glance, and decides which pages deserve one.

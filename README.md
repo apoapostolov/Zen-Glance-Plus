@@ -30,6 +30,8 @@ Add a domain, and its row has a switch for the site's new tabs and a switch for 
 
 Changes save as you make them and apply to the next page you open.
 
+The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com, github.com and news.ycombinator.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
+
 ### Link patterns
 
 Click a site name and the row opens its patterns. With none, every link on the site glances. With patterns, only matching links do, which is how a subreddit's posts open in Glance while its listings, front page and settings stay ordinary tabs:

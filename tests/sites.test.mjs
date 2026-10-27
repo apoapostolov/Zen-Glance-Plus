@@ -159,7 +159,7 @@ function createDocument() {
 
 /* ---------------------------------------------------------------- the world */
 
-function createWorld({ domains = [], prefs = {} } = {}) {
+function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
   const prefMap = new Map([
     ["zen-glance-plus.essential", true],
     ["zen-glance-plus.pinned", true],
@@ -169,6 +169,10 @@ function createWorld({ domains = [], prefs = {} } = {}) {
     ["zen-glance-plus.domains", JSON.stringify(domains)],
     ...Object.entries(prefs),
   ]);
+  if (fresh) {
+    // A profile where the domains pref was never written.
+    prefMap.delete("zen-glance-plus.domains");
+  }
 
   const document = createDocument();
   const windowListeners = new Map();
@@ -214,6 +218,8 @@ function createWorld({ domains = [], prefs = {} } = {}) {
         getStringPref: (name, fallback = "") =>
           prefMap.has(name) ? String(prefMap.get(name)) : fallback,
         setStringPref: (name, value) => prefMap.set(name, String(value)),
+        getPrefType: name => (prefMap.has(name) ? 32 : 0),
+        PREF_INVALID: 0,
       },
       scriptSecurityManager: { getSystemPrincipal: () => ({ isSystemPrincipal: true }) },
     },
@@ -259,6 +265,54 @@ test("a pasted address is reduced to its site", () => {
   assert.equal(api.normaliseDomain(""), null);
   assert.equal(api.normaliseDomain("not a domain"), null);
   assert.equal(api.normaliseDomain("<script>"), null);
+});
+
+/* ------------------------------------------------------- shipped defaults */
+
+test("a fresh profile ships the popular sites, configured", () => {
+  const world = createWorld({ fresh: true });
+  const rules = world.api.readDomains();
+  const hosts = rules.map(rule => rule.host);
+
+  assert.equal(rules.length, 7);
+  for (const host of ["reddit.com", "x.com", "facebook.com", "youtube.com", "instagram.com", "github.com", "news.ycombinator.com"]) {
+    assert.ok(hosts.includes(host), "missing " + host);
+  }
+  for (const rule of rules) {
+    assert.equal(rule.tabs, true, rule.host + " should glance new tabs");
+    assert.equal(rule.links, true, rule.host + " should glance same-tab links");
+    assert.ok(rule.paths.length > 0, rule.host + " should be narrowed, not whole-domain");
+  }
+
+  // Seeded once into the pref, so the table shows them on first open.
+  assert.equal(world.stored().length, 7);
+
+  const reddit = rules.find(rule => rule.host === "reddit.com");
+  assert.equal(world.api.linkMatchesRule(reddit, new URL("https://www.reddit.com/r/zen/comments/1abc/title/")), true);
+  assert.equal(world.api.linkMatchesRule(reddit, new URL("https://www.reddit.com/r/zen/")), false);
+  assert.equal(world.api.linkMatchesRule(reddit, new URL("https://www.reddit.com/")), false);
+
+  const x = rules.find(rule => rule.host === "x.com");
+  assert.equal(world.api.linkMatchesRule(x, new URL("https://x.com/someone/status/1234567890")), true);
+  assert.equal(world.api.linkMatchesRule(x, new URL("https://x.com/explore")), false);
+
+  const yt = rules.find(rule => rule.host === "youtube.com");
+  assert.equal(world.api.linkMatchesRule(yt, new URL("https://www.youtube.com/watch?v=abc")), true);
+  assert.equal(world.api.linkMatchesRule(yt, new URL("https://www.youtube.com/shorts/abc")), true);
+  assert.equal(world.api.linkMatchesRule(yt, new URL("https://www.youtube.com/feed/subscriptions")), false);
+});
+
+test("an emptied list is not refilled", () => {
+  const world = createWorld({ domains: [] });
+  assert.equal(world.api.readDomains().length, 0);
+});
+
+test("a stored list is never replaced by the defaults", () => {
+  const world = createWorld({ domains: [{ host: "example.com", tabs: false, links: true, paths: [] }] });
+  const rules = world.api.readDomains();
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].host, "example.com");
+  assert.equal(rules[0].tabs, false);
 });
 
 /* --------------------------------------------------------- link patterns */

@@ -186,6 +186,9 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
           prefMap.has(name) ? Boolean(prefMap.get(name)) : fallback,
         getStringPref: (name, fallback = "") =>
           prefMap.has(name) ? String(prefMap.get(name)) : fallback,
+        setStringPref: (name, value) => prefMap.set(name, String(value)),
+        getPrefType: name => (prefMap.has(name) ? 32 : 0),
+        PREF_INVALID: 0,
       },
       scriptSecurityManager: {
         getSystemPrincipal: () => ({ isSystemPrincipal: true }),
@@ -452,6 +455,31 @@ test("patterns gate a same-tab redirect the same way", () => {
   });
   assert.equal(world.openGlanceCalls.length, 1, "a listing still replaces the tab");
   assert.equal(world.openLinkInCalls.length, 1);
+});
+
+test("the shipped sites glance a post from an ordinary tab", async () => {
+  const world = createWorld();
+  world.select(makeTab("normal", { url: "https://example.org/search" }));
+
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/title/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "a reddit post glances with ordinary tabs off");
+
+  world.setOverlay(false);
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "a subreddit listing still opens as a tab");
+});
+
+test("a site row can still switch a shipped site off", async () => {
+  const world = createWorld({
+    prefs: { "zen-glance-plus.domains": JSON.stringify([{ host: "reddit.com", tabs: false, links: false, paths: [] }]) },
+  });
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/title/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
 });
 
 test("nothing is converted while Zen is animating a Glance", async () => {

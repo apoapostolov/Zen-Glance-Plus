@@ -24,6 +24,20 @@
   "use strict";
 
   const PREF_ROOT = "zen-glance-plus.";
+  /**
+   * Sites that ship configured. Only used when the domains pref has never
+   * been written, so a list emptied by hand stays empty.
+   */
+  const DEFAULT_SITES = [
+    { host: "reddit.com", tabs: true, links: true, paths: ["*/comments/*"] },
+    { host: "x.com", tabs: true, links: true, paths: ["*/status/*"] },
+    { host: "facebook.com", tabs: true, links: true, paths: ["*/posts/*", "/permalink.php*", "/photo.php*"] },
+    { host: "youtube.com", tabs: true, links: true, paths: ["/watch*", "/shorts/*"] },
+    { host: "instagram.com", tabs: true, links: true, paths: ["/p/*", "/reel/*"] },
+    { host: "github.com", tabs: true, links: true, paths: ["*/issues/*", "*/pull/*", "*/discussions/*"] },
+    { host: "news.ycombinator.com", tabs: true, links: true, paths: ["/item?id=*"] },
+  ];
+
   const PREF = {
     essential: PREF_ROOT + "essential",
     pinned: PREF_ROOT + "pinned",
@@ -169,7 +183,25 @@
     return rules;
   }
 
+  /** True only while the domains pref has never been written. */
+  function domainsPrefIsUnset() {
+    try {
+      const prefs = Services.prefs;
+      if (typeof prefs.getPrefType !== "function") {
+        return false;
+      }
+      return prefs.getPrefType(PREF.domains) === (prefs.PREF_INVALID ?? 0);
+    } catch (e) {
+      return false;
+    }
+  }
+
   function readDomains() {
+    if (domainsPrefIsUnset()) {
+      const seeded = parseDomains(JSON.stringify(DEFAULT_SITES));
+      writeDomains(seeded);
+      return seeded;
+    }
     return parseDomains(readPrefString(PREF.domains, "[]"));
   }
 
