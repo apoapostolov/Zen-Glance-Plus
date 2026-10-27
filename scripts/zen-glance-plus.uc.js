@@ -103,6 +103,7 @@
     newtab: PREF_ROOT + "newtab",
     redirect: PREF_ROOT + "redirect",
     samedomain: PREF_ROOT + "samedomain",
+    seeded: PREF_ROOT + "seeded",
     domains: PREF_ROOT + "domains",
   };
 
@@ -195,22 +196,17 @@
     return `${second}.${last}`;
   }
 
-  function hostOf(value) {
+  function hostOfUrl(value) {
     const text = String(value?.href ?? value ?? "");
     if (!text) {
       return null;
     }
-    try {
-      const host = new URL(text).host;
-      return host ? normaliseDomain(host) : null;
-    } catch (e) {
-      return normaliseDomain(text);
-    }
+    return normaliseDomain(hostOf(text));
   }
 
   function sourceHost(parent) {
     try {
-      return hostOf(parent?.linkedBrowser?.currentURI?.spec);
+      return hostOfUrl(parent?.linkedBrowser?.currentURI?.spec);
     } catch (e) {
       return null;
     }
@@ -229,7 +225,7 @@
     if (!source) {
       return false;
     }
-    const target = hostOf(url);
+    const target = hostOfUrl(url);
     if (!target) {
       return false;
     }
@@ -329,6 +325,47 @@
       return seeded;
     }
     return parseDomains(readPrefString(PREF.domains, "[]"));
+  }
+
+  function readSeeded() {
+    try {
+      const list = JSON.parse(readPrefString(PREF.seeded, "[]"));
+      return Array.isArray(list) ? list.filter(host => typeof host === "string") : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeSeeded(hosts) {
+    try {
+      Services.prefs.setStringPref(PREF.seeded, JSON.stringify(hosts));
+    } catch (e) {
+      console.error("[zen-glance-plus] could not save the seeded sites", e);
+    }
+  }
+
+  /**
+   * A preset added in a later version reaches a list that already exists: each
+   * shipped site is offered once, ever. Recording them all as offered is what
+   * stops a site you deleted from coming back on the next start.
+   */
+  function offerNewPresets() {
+    const offered = new Set(readSeeded());
+    const rules = readDomains();
+    const present = new Set(rules.map(rule => rule.host));
+    const added = DEFAULT_SITES.filter(
+      site => !offered.has(site.host) && !present.has(site.host)
+    );
+    if (added.length) {
+      const rows = added.map(site => ({ ...site, paths: [...site.paths] }));
+      writeDomains([...rules, ...rows]);
+      trace(`presets: added ${rows.map(site => site.host).join(", ")}`);
+    }
+    const next = [...new Set([...offered, ...DEFAULT_SITES.map(site => site.host)])];
+    if (next.length !== offered.size) {
+      writeSeeded(next);
+    }
+    return added.map(site => site.host);
   }
 
   function writeDomains(rules) {
@@ -1500,6 +1537,7 @@
       },
       { once: true }
     );
+    offerNewPresets();
     console.info(LOG, "started with", readDomains().length, "sites configured");
     trace(
       `start ok hooked=${Boolean(state.originalAddTab)} sites=${readDomains().length} ` +
@@ -1578,6 +1616,8 @@
     normaliseDomain,
     registrableDomain,
     blockedByDomain,
+    offerNewPresets,
+    readSeeded,
     normalisePathPattern,
     parseDomains,
     parsePaths,

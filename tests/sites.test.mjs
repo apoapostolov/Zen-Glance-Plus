@@ -275,6 +275,38 @@ test("a pasted address is reduced to its site", () => {
 
 /* ------------------------------------------------------- shipped defaults */
 
+test("a preset added later reaches a list that already exists, once", () => {
+  const six = [
+    { host: "reddit.com", tabs: true, links: true, paths: ["*/comments/*"] },
+    { host: "x.com", tabs: true, links: true, paths: ["*/status/*"] },
+    { host: "facebook.com", tabs: true, links: true, paths: ["*/posts/*"] },
+    { host: "youtube.com", tabs: true, links: true, paths: ["/watch*"] },
+    { host: "instagram.com", tabs: true, links: true, paths: ["/p/*"] },
+    { host: "github.com", tabs: true, links: true, paths: ["*/issues/*"] },
+  ];
+  const world = createWorld({ domains: six });
+
+  assert.deepEqual(Array.from(world.api.offerNewPresets()), ["feedly.com"]);
+  assert.equal(world.stored().length, 7);
+  const feedly = world.api.readDomains().find(rule => rule.host === "feedly.com");
+  assert.deepEqual(Array.from(feedly.paths), ["/i/entry/*"]);
+  assert.equal(feedly.tabs, true);
+  assert.equal(feedly.links, true);
+
+  // Offered once, ever: deleting it keeps it deleted.
+  world.api.removeDomain(world.api.readDomains().findIndex(rule => rule.host === "feedly.com"));
+  assert.deepEqual(Array.from(world.api.offerNewPresets()), []);
+  assert.equal(world.api.readDomains().length, 6);
+});
+
+test("a fresh profile is offered every preset and remembers it did", () => {
+  const world = createWorld({ fresh: true });
+  assert.deepEqual(Array.from(world.api.offerNewPresets()), []);
+  assert.equal(world.api.readDomains().length, 7);
+  assert.equal(world.api.readSeeded().length, 7);
+  assert.equal(world.api.readSeeded().includes("feedly.com"), true);
+});
+
 test("a fresh profile ships the popular sites, configured", () => {
   const world = createWorld({ fresh: true });
   const rules = world.api.readDomains();

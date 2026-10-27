@@ -55,7 +55,7 @@ Add a domain, and its row has two switches: **Link** for clicks that would repla
 
 Changes save as you make them and apply to the next page you open.
 
-The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com, github.com and feedly.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread, an article in Feedly's own reader — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
+The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com, github.com and feedly.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread, an article in Feedly's own reader — so a fresh install glances something before you touch a setting. A site added to that list in a later version is offered once to installs that already have their own list, and recorded as offered; deleting a row keeps it deleted, and no preset returns on its own.
 
 ### Link patterns
 

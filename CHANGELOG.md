@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.12 — 2026-10-27
+
+- A preset added in a later version now reaches a list that already exists. Each shipped site is offered once, ever, and recorded as offered, so Feedly appears on an install that predates it while a row you deleted stays deleted.
+
 ## 1.0.11 — 2026-10-27
 
 - **Same Domain Only** joins the switches: with it on, a page glances only when it belongs to the domain of the tab it was opened from. Domains are compared rather than hosts, so a subdomain still counts as the same place, and a site row cannot reach outside its own domain either. A New Tab page has no domain, so nothing opened from one is constrained.
