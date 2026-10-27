@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Zen's Glance, without the gesture.</strong><br>
-  A new tab opens over the page you are reading instead of replacing it, and each site decides which of its pages are worth one.
+  Pages you choose open over the one you are reading instead of replacing it, and each site decides which of its pages are worth a Glance.
 </p>
 
 <p align="center">
