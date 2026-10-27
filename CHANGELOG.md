@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.19 — 2026-10-28
+
+- The copy button used a drawn image of my own and filled it with `currentColor`, which came out black on a dark skin. It now uses Zen's own link icon, `chrome://browser/skin/zen-icons/link.svg`, the chain glyph its interface uses for links, and sets it the way Zen sets the icons on its own strip buttons — `list-style-image` on the toolbarbutton with `-moz-context-properties: fill, fill-opacity`. The skin decides the colour through the same path as close, expand and split, instead of a fill of the mod's own.
+- Those three declarations carry `!important`, because a theme's user chrome styles toolbarbuttons and does so with `!important` of its own.
+
 ## 1.0.18 — 2026-10-27
 
 - The Glance's button strip gains **Copy link**, next to close, expand and split. It runs Zen's own copy action, `gZenCommonActions.copyCurrentURLToClipboard`, so the address is copied the way the browser copies it: readable form, tracking parameters stripped, and the usual "copied" toast with its Share button. Zen builds that strip from a template for every Glance, so the button is added there once and appears in the peek and expanded states alike.

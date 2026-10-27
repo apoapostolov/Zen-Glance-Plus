@@ -630,10 +630,16 @@ test("the glance button strip gets one copy button, once", () => {
   const world = createWorld();
   const made = [];
   const element = name => {
+    const styles = new Map();
     const node = {
       kind: name,
       attrs: {},
       children: [],
+      style: {
+        setProperty: (key, value, priority) => styles.set(key, { value, priority }),
+        getPropertyValue: key => styles.get(key)?.value ?? "",
+        getPropertyPriority: key => styles.get(key)?.priority ?? "",
+      },
       set className(value) {
         this.attrs.class = value;
       },
@@ -671,8 +677,23 @@ test("the glance button strip gets one copy button, once", () => {
   assert.match(first.className, /zgp-glance-copy/);
   assert.equal(first.getAttribute("data-act"), "glancecopy");
   assert.equal(first.getAttribute("aria-label"), "Copy link");
-  assert.equal(first.children.length, 1, "it carries an icon");
-  assert.equal(first.children[0].kind, "image");
+  assert.equal(
+    first.style.getPropertyValue("list-style-image"),
+    'url("' + world.api.COPY_ICON + '")',
+    "the icon is Zen's own, drawn the way Zen draws its strip icons"
+  );
+  assert.equal(world.api.COPY_ICON, "chrome://browser/skin/zen-icons/link.svg");
+  assert.equal(
+    first.style.getPropertyValue("-moz-context-properties"),
+    "fill, fill-opacity",
+    "so the skin colours it the way it colours close and split"
+  );
+  assert.equal(first.children.length, 0, "no embedded image with a fill of its own");
+  assert.equal(
+    first.style.getPropertyPriority("list-style-image"),
+    "important",
+    "a theme's user chrome must not be able to strip it"
+  );
 
   assert.equal(world.api.addGlanceCopyButton(container), null, "adding it twice changes nothing");
   assert.equal(container.children.length, 1);

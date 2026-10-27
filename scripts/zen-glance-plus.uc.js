@@ -810,14 +810,13 @@
   /* ------------------------------------------------------- glance copy link */
 
   const GLANCE_COPY = "zgp-glance-copy";
-  const COPY_ICON =
-    "data:image/svg+xml;utf8," +
-    encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +
-        '<path fill="context-fill" d="M5 1a2 2 0 0 0-2 2v6h1.5V3a.5.5 0 0 1 .5-.5h4V1H5Z"/>' +
-        '<path fill="context-fill" d="M8 4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8Z"/>' +
-        "</svg>"
-    );
+  /**
+   * Zen's own link icon, drawn the way its own strip buttons draw theirs: as a
+   * list style image on the toolbarbutton, so the skin decides the colour
+   * through the same context-fill path as close, expand and split. Embedding
+   * an image with its own fill is what made it black under a skin.
+   */
+  const COPY_ICON = "chrome://browser/skin/zen-icons/link.svg";
 
   /**
    * Add the copy button to a glance's button strip. Zen clones this strip from
@@ -834,10 +833,13 @@
     button.setAttribute("data-act", "glancecopy");
     button.setAttribute("aria-label", "Copy link");
     button.setAttribute("title", "Copy link");
-    const image = doc.createXULElement("image");
-    image.setAttribute("src", COPY_ICON);
-    image.setAttribute("style", "width: 100%; height: 100%; -moz-context-properties: fill; fill: currentColor;");
-    button.appendChild(image);
+    if (button.style?.setProperty) {
+      // Important, because a theme's user chrome is free to style toolbarbuttons
+      // and does, with !important of its own.
+      button.style.setProperty("list-style-image", `url("${COPY_ICON}")`, "important");
+      button.style.setProperty("-moz-context-properties", "fill, fill-opacity", "important");
+      button.style.setProperty("fill", "currentColor", "important");
+    }
     container.appendChild(button);
     return button;
   }
@@ -1861,6 +1863,7 @@
     hookPreferences,
     addGlanceCopyButton,
     installGlanceCopyButton,
+    COPY_ICON,
     copyGlanceUrl,
     glanceBrowserOf,
     onGlanceCopyClick,
