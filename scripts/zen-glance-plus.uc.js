@@ -865,8 +865,8 @@
     remove.textContent = "×";
 
     row.appendChild(site);
+    row.appendChild(makeBox("links", rule.links, `Links on ${rule.host}`));
     row.appendChild(makeBox("tabs", rule.tabs, `New tabs on ${rule.host}`));
-    row.appendChild(makeBox("links", rule.links, `Same tab links on ${rule.host}`));
     row.appendChild(remove);
 
     const paths = el(doc, "div", "zgp-paths");
@@ -881,10 +881,13 @@
     input.setAttribute("placeholder", "/r/*/comments/*");
     input.setAttribute("aria-label", `Links that glance on ${rule.host}`);
     input.setAttribute("spellcheck", "false");
-    const addButton = el(doc, "button", "zgp-addbutton");
-    addButton.setAttribute("type", "button");
+    const addButton = el(doc, "span", "zgp-addbutton zgp-glyph");
+    addButton.setAttribute("role", "button");
+    addButton.setAttribute("tabindex", "0");
     addButton.setAttribute("data-act", "addpath");
-    addButton.textContent = "Add";
+    addButton.setAttribute("title", "Add pattern");
+    addButton.setAttribute("aria-label", `Add a link pattern for ${rule.host}`);
+    addButton.textContent = "+";
     add.appendChild(input);
     add.appendChild(addButton);
     paths.appendChild(add);
@@ -895,8 +898,9 @@
       chip.setAttribute("data-index", String(position));
       const text = el(doc, "span", "zgp-chip-text");
       text.textContent = pattern;
-      const kill = el(doc, "button", "zgp-chip-remove");
-      kill.setAttribute("type", "button");
+      const kill = el(doc, "span", "zgp-chip-remove");
+      kill.setAttribute("role", "button");
+      kill.setAttribute("tabindex", "0");
       kill.setAttribute("data-act", "removepath");
       kill.setAttribute("aria-label", `Remove ${pattern} from ${rule.host}`);
       kill.textContent = "×";
@@ -948,16 +952,18 @@
     input.setAttribute("placeholder", "example.com");
     input.setAttribute("aria-label", "Site to add");
     input.setAttribute("spellcheck", "false");
-    const addButton = el(doc, "button", "zgp-addbutton");
-    addButton.setAttribute("type", "button");
+    const addButton = el(doc, "span", "zgp-addbutton");
+    addButton.setAttribute("role", "button");
+    addButton.setAttribute("tabindex", "0");
     addButton.setAttribute("data-act", "add");
+    addButton.setAttribute("aria-label", "Add site");
     addButton.textContent = "Add";
     add.appendChild(input);
     add.appendChild(addButton);
     root.appendChild(add);
 
     const head = el(doc, "div", "zgp-head");
-    for (const title of ["Site", "New tabs", "Same tab", ""]) {
+    for (const title of ["Site", "Link", "New tabs", ""]) {
       const cell = el(doc, "span", "zgp-headcell");
       cell.textContent = title;
       head.appendChild(cell);
@@ -1115,7 +1121,13 @@
     }
     const target = event.target;
     const action = target?.getAttribute?.("data-act");
-    if (action === "toggle" || action === "remove") {
+    if (
+      action === "toggle" ||
+      action === "remove" ||
+      action === "addpath" ||
+      action === "add" ||
+      action === "removepath"
+    ) {
       event.preventDefault();
       onTableClick(win, { target });
       return;

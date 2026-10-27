@@ -46,7 +46,7 @@ A tab is classified once: essentials first, because they are pinned as well, the
 
 ### Sites
 
-Add a domain, and its row has a switch for the site's new tabs and a switch for links that would replace the current tab. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the five switches in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
+Add a domain, and its row has two switches: **Link** for clicks that would replace the page you are on, and **New tabs** for links that open a tab. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the five switches in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
 
 Changes save as you make them and apply to the next page you open.
 
@@ -67,7 +67,7 @@ Patterns match the address path and query, never the domain, because the row alr
 
 - Zen holds one Glance at a time. When a second page matches while one is open, the open one is turned into a real tab and the new page is shown as a Glance.
 - A page that would have opened in a background tab opens as a Glance instead, which brings it on screen.
-- `Apply to Normal Tab Redirection` and a row's **Same tab** switch cover page-initiated opens that reach the browser window, such as a context menu's "open in this tab". A plain left click inside a page is performed by the content process and never reaches the browser window, so no mod of this shape can divert it. Nothing typed in the address bar is affected.
+- `Apply to Normal Tab Redirection` and a row's **Link** switch cover page-initiated opens that reach the browser window, such as a context menu's "open in this tab". A plain left click inside a page is performed by the content process and never reaches the browser window, so no mod of this shape can divert it. Nothing typed in the address bar is affected.
 - Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
 - Nothing is converted while Zen runs a Glance animation.

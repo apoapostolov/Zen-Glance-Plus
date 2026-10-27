@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.8 — 2026-10-27
+
+- The second column is called **Link** and comes before **New tabs**, so both columns read as what they govern: a click that would replace the page, and a link that opens a tab.
+- The control that adds a pattern is a square borderless glyph beside the field instead of a wide button, and a pattern pill is as tall as the field and only as wide as its text. The pill's remove glyph is no longer a button either, so the settings page cannot give it a minimum width.
+
 ## 1.0.7 — 2026-10-27
 
 - The Sites table finds its place again. It was mounted when the settings page loaded, but a mod's settings rows are built only when its Configure dialog opens, so the mount ran before the anchor existed and correctly reported that it had nothing to hang from. The mount now also runs after a click in the settings page, looks in frames as well as the top document, and falls back from the element id to the Sites heading and then to the dialog that holds the rows, recording in the log which of the three it used.

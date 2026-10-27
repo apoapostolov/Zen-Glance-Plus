@@ -567,19 +567,23 @@ test("the table renders a row per site with its two switches", () => {
 
   const boxes = rows[0].querySelectorAll("input");
   assert.equal(boxes.length, 2);
-  assert.equal(boxes[0].getAttribute("data-act"), "tabs");
-  assert.equal(boxes[0].checked, true);
-  assert.equal(boxes[1].getAttribute("data-act"), "links");
-  assert.equal(boxes[1].checked, false);
-  assert.equal(boxes[1].getAttribute("aria-label"), "Same tab links on reddit.com");
+  assert.equal(boxes[0].getAttribute("data-act"), "links");
+  assert.equal(boxes[0].checked, false);
+  assert.equal(boxes[0].getAttribute("aria-label"), "Links on reddit.com");
+  assert.equal(boxes[1].getAttribute("data-act"), "tabs");
+  assert.equal(boxes[1].checked, true);
+  assert.equal(boxes[1].getAttribute("aria-label"), "New tabs on reddit.com");
 
-  assert.equal(rows[1].querySelectorAll("input")[0].checked, false);
-  assert.equal(rows[1].querySelectorAll("input")[1].checked, true);
+  const second = rows[1].querySelectorAll("input");
+  assert.equal(second[0].getAttribute("data-act"), "links");
+  assert.equal(second[0].checked, true);
+  assert.equal(second[1].getAttribute("data-act"), "tabs");
+  assert.equal(second[1].checked, false);
 
   const heads = table.querySelector(".zgp-head").querySelectorAll(".zgp-headcell");
   assert.deepEqual(
     heads.map(cell => cell.textContent),
-    ["Site", "New tabs", "Same tab", ""]
+    ["Site", "Link", "New tabs", ""]
   );
   assert.equal(table.querySelector(".zgp-empty").hasAttribute("hidden"), true);
 });
@@ -759,7 +763,10 @@ test("Enter in the site field adds the site too", () => {
 test("a switch in the table saves immediately", () => {
   const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false }] });
   const table = world.withAnchor();
-  const linksBox = table.querySelectorAll(".zgp-row")[0].querySelectorAll("input")[1];
+  const linksBox = table
+    .querySelectorAll(".zgp-row")[0]
+    .querySelectorAll("input")
+    .find(box => box.getAttribute("data-act") === "links");
   linksBox.checked = true;
   world.api.onTableChange(world.window, { target: linksBox });
 
