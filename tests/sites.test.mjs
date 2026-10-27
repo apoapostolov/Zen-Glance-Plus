@@ -1,5 +1,5 @@
 /**
- * Zen Glance Plus — sites and settings table
+ * Glance Plus — sites, link patterns and the settings table
  *
  * Runs the real `scripts/zen-glance-plus.uc.js` in a Node VM with a small DOM
  * of the same shape the settings page gives it, and checks the site list from
@@ -224,12 +224,20 @@ function createWorld({ domains = [], prefs = {} } = {}) {
   vm.runInContext(source, vm.createContext(sandbox), { filename: scriptPath });
 
   const stored = () => JSON.parse(prefMap.get("zen-glance-plus.domains") ?? "[]");
+  const withAnchor = () => {
+    const anchor = document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
+    anchor.id = "zen-glance-plus-domains";
+    document.documentElement.appendChild(anchor);
+    windowObject.__zenGlancePlus.injectTable(windowObject);
+    return document.getElementById("zen-glance-plus-domains-table");
+  };
 
   return {
     api: windowObject.__zenGlancePlus,
     window: windowObject,
     document,
     stored,
+    withAnchor,
     sheetCalls,
     setPref: (name, value) => prefMap.set(name, value),
   };
@@ -251,6 +259,64 @@ test("a pasted address is reduced to its site", () => {
   assert.equal(api.normaliseDomain(""), null);
   assert.equal(api.normaliseDomain("not a domain"), null);
   assert.equal(api.normaliseDomain("<script>"), null);
+});
+
+/* --------------------------------------------------------- link patterns */
+
+test("a link pattern keeps only the path, and matches from the root", () => {
+  const { api } = createWorld();
+  assert.equal(api.normalisePathPattern("/r/*/comments/*"), "/r/*/comments/*");
+  assert.equal(
+    api.normalisePathPattern("https://www.reddit.com/r/zen/comments/*"),
+    "/r/zen/comments/*"
+  );
+  assert.equal(api.normalisePathPattern("comments/*"), "*comments/*");
+  assert.equal(api.normalisePathPattern("  /watch  "), "/watch");
+  assert.equal(api.normalisePathPattern(""), null);
+  assert.equal(api.normalisePathPattern("*"), null);
+});
+
+test("a wildcard spans slashes and a pattern is anchored", () => {
+  const { api } = createWorld();
+  assert.equal(api.pathMatches("/r/*/comments/*", "/r/zen/comments/abc/title/"), true);
+  assert.equal(api.pathMatches("*/comments/*", "/comments/abc"), true);
+  assert.equal(api.pathMatches("/r/*/comments/*", "/r/zen/"), false);
+  assert.equal(api.pathMatches("/watch", "/watch?v=1"), false);
+  assert.equal(api.pathMatches("/watch?*", "/watch?v=1"), true);
+  assert.equal(api.pathMatches("/a.b", "/axb"), false);
+});
+
+test("a row without patterns answers for every link", () => {
+  const { api } = createWorld();
+  assert.equal(api.linkMatchesRule({ paths: [] }, "https://reddit.com/r/zen/"), true);
+  assert.equal(api.linkMatchesRule({}, "https://reddit.com/"), true);
+});
+
+test("a row with patterns answers only for the links that match one", () => {
+  const { api } = createWorld();
+  const rule = { paths: ["/r/*/comments/*", "*/comments/*"] };
+  assert.equal(api.linkMatchesRule(rule, "https://www.reddit.com/r/zen/comments/1abc/x/"), true);
+  assert.equal(api.linkMatchesRule(rule, "https://www.reddit.com/comments/1abc"), true);
+  assert.equal(api.linkMatchesRule(rule, "https://www.reddit.com/r/zen/"), false);
+  assert.equal(api.linkMatchesRule(rule, "https://www.reddit.com/"), false);
+  assert.equal(api.linkMatchesRule(rule, "https://www.reddit.com/user/someone"), false);
+});
+
+test("patterns survive storage and junk is dropped", () => {
+  const { api } = createWorld({
+    domains: [
+      {
+        host: "reddit.com",
+        tabs: true,
+        links: true,
+        paths: ["/r/*/comments/*", "  ", 7, "comments/*", "/r/*/comments/*"],
+      },
+      { host: "plain.example" },
+    ],
+  });
+  const rules = api.readDomains();
+  assert.equal(JSON.stringify(rules[0].paths), JSON.stringify(["/r/*/comments/*", "*comments/*"]));
+  assert.equal(rules[1].paths.length, 0);
 });
 
 test("the stored pref survives junk and keeps its flags", () => {
@@ -283,11 +349,13 @@ test("a row claims its domain and everything under it", () => {
   assert.equal(api.domainRuleFor("https://reddit.com.evil.test/"), null);
 });
 
-test("adding a site writes it with new tabs on and same tab off", () => {
+test("adding a site writes it with new tabs on, same tab off, no patterns", () => {
   const world = createWorld();
   const next = world.api.addDomain("https://www.example.com/some/page");
   assert.equal(next.length, 1);
-  assert.deepEqual(world.stored(), [{ host: "example.com", tabs: true, links: false }]);
+  assert.deepEqual(world.stored(), [
+    { host: "example.com", tabs: true, links: false, paths: [] },
+  ]);
 });
 
 test("a duplicate, a blank and a nonsense site are refused", () => {
@@ -307,11 +375,32 @@ test("a flag is flipped on one row and leaves the others alone", () => {
   });
   world.api.setDomainFlag(1, "links", true);
   assert.deepEqual(world.stored(), [
-    { host: "a.example", tabs: true, links: false },
-    { host: "b.example", tabs: true, links: true },
+    { host: "a.example", tabs: true, links: false, paths: [] },
+    { host: "b.example", tabs: true, links: true, paths: [] },
   ]);
   assert.equal(world.api.setDomainFlag(5, "links", true), null);
   assert.equal(world.api.setDomainFlag(0, "other", true), null);
+});
+
+test("adding and removing a pattern touches one row only", () => {
+  const world = createWorld({
+    domains: [
+      { host: "a.example", tabs: true, links: false, paths: [] },
+      { host: "b.example", tabs: true, links: false, paths: [] },
+    ],
+  });
+  world.api.addPath(1, "https://b.example/thing/*");
+  assert.deepEqual(world.stored()[1].paths, ["/thing/*"]);
+  assert.deepEqual(world.stored()[0].paths, []);
+
+  world.api.addPath(1, "other/*");
+  assert.deepEqual(world.stored()[1].paths, ["/thing/*", "*other/*"]);
+  assert.equal(world.api.addPath(1, "other/*"), null, "a duplicate pattern is refused");
+  assert.equal(world.api.addPath(9, "/x/*"), null);
+
+  world.api.removePath(1, 0);
+  assert.deepEqual(world.stored()[1].paths, ["*other/*"]);
+  assert.equal(world.api.removePath(1, 5), null);
 });
 
 test("removing a row drops exactly that row", () => {
@@ -330,6 +419,8 @@ test("removing a row drops exactly that row", () => {
   assert.equal(world.api.removeDomain(9), null);
 });
 
+/* ----------------------------------------------------------- the table */
+
 test("the table renders a row per site with its two switches", () => {
   const world = createWorld({
     domains: [
@@ -342,7 +433,7 @@ test("the table renders a row per site with its two switches", () => {
 
   const rows = table.querySelectorAll(".zgp-row");
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].querySelector(".zgp-site").textContent, "reddit.com");
+  assert.equal(rows[0].querySelector(".zgp-site-name").textContent, "reddit.com");
 
   const boxes = rows[0].querySelectorAll("input");
   assert.equal(boxes.length, 2);
@@ -368,27 +459,121 @@ test("an empty table says so and offers the field", () => {
   const table = world.api.buildTable(world.document, []);
   assert.equal(table.querySelectorAll(".zgp-row").length, 0);
   assert.equal(table.querySelector(".zgp-empty").hasAttribute("hidden"), false);
-  assert.equal(table.querySelector(".zgp-input").getAttribute("placeholder"), "example.com");
+  assert.equal(table.querySelector(".zgp-siteinput").getAttribute("placeholder"), "example.com");
 });
 
 test("a stored site cannot become markup", () => {
   const world = createWorld();
   const table = world.api.buildTable(world.document, [
-    { host: '<img src=x onerror="alert(1)">', tabs: true, links: false },
+    { host: '<img src=x onerror="alert(1)">', tabs: true, links: false, paths: [] },
   ]);
-  const site = table.querySelector(".zgp-site");
+  const site = table.querySelector(".zgp-site-name");
   assert.equal(site.textContent, '<img src=x onerror="alert(1)">');
   assert.equal(site.children.length, 0);
 });
 
+test("a row with patterns shows a count and keeps its editor shut", () => {
+  const world = createWorld({
+    domains: [
+      { host: "reddit.com", tabs: true, links: false, paths: ["/r/*/comments/*"] },
+      { host: "example.com", tabs: true, links: false, paths: ["/a", "/b"] },
+    ],
+  });
+  const table = world.api.buildTable(world.document, world.api.readDomains());
+  const entries = table.querySelectorAll(".zgp-entry");
+  assert.equal(entries.length, 2);
+
+  assert.equal(entries[0].querySelector(".zgp-badge").textContent, "1 link");
+  assert.equal(entries[1].querySelector(".zgp-badge").textContent, "2 links");
+  assert.equal(entries[0].querySelector(".zgp-paths").hasAttribute("hidden"), true);
+  assert.equal(entries[0].querySelector(".zgp-site").getAttribute("aria-expanded"), "false");
+  assert.equal(
+    entries[0].querySelector(".zgp-site").getAttribute("title"),
+    "/r/*/comments/*"
+  );
+});
+
+test("a row without patterns offers the editor with an any-link note", () => {
+  const world = createWorld({ domains: [{ host: "example.com" }] });
+  const table = world.api.buildTable(world.document, world.api.readDomains());
+  const entry = table.querySelector(".zgp-entry");
+  assert.equal(entry.querySelector(".zgp-badge"), null);
+  assert.equal(entry.querySelector(".zgp-anylink").hasAttribute("hidden"), false);
+  assert.equal(entry.querySelector(".zgp-anylink").textContent, "Any link on this site");
+  assert.equal(entry.querySelector(".zgp-pathinput").getAttribute("placeholder"), "/r/*/comments/*");
+});
+
+test("clicking the site name opens and closes its patterns", () => {
+  const world = createWorld({ domains: [{ host: "reddit.com" }] });
+  const table = world.withAnchor();
+
+  world.api.onTableClick(world.window, { target: table.querySelector(".zgp-site") });
+  let entry = world.document.querySelector(".zgp-entry");
+  assert.equal(entry.querySelector(".zgp-paths").hasAttribute("hidden"), false);
+  assert.equal(entry.querySelector(".zgp-site").getAttribute("aria-expanded"), "true");
+
+  world.api.onTableClick(world.window, { target: entry.querySelector(".zgp-site") });
+  entry = world.document.querySelector(".zgp-entry");
+  assert.equal(entry.querySelector(".zgp-paths").hasAttribute("hidden"), true);
+});
+
+test("a pattern typed under a row is saved and shown as a chip", () => {
+  const world = createWorld({ domains: [{ host: "reddit.com" }] });
+  const table = world.withAnchor();
+  world.api.onTableClick(world.window, { target: table.querySelector(".zgp-site") });
+
+  let entry = world.document.querySelector(".zgp-entry");
+  const input = entry.querySelector(".zgp-pathinput");
+  input.value = "https://www.reddit.com/r/*/comments/*";
+  world.api.onTableClick(world.window, { target: entry.querySelector('[data-act="addpath"]') });
+
+  assert.deepEqual(world.stored()[0].paths, ["/r/*/comments/*"]);
+  entry = world.document.querySelector(".zgp-entry");
+  assert.equal(entry.querySelector(".zgp-chip-text").textContent, "/r/*/comments/*");
+  assert.equal(entry.querySelector(".zgp-badge").textContent, "1 link");
+  assert.equal(entry.querySelector(".zgp-anylink").hasAttribute("hidden"), true);
+  assert.equal(entry.querySelector(".zgp-paths").hasAttribute("hidden"), false);
+});
+
+test("Enter in a pattern field adds the pattern", () => {
+  const world = createWorld({ domains: [{ host: "reddit.com" }] });
+  const table = world.withAnchor();
+  world.api.onTableClick(world.window, { target: table.querySelector(".zgp-site") });
+
+  const entry = world.document.querySelector(".zgp-entry");
+  const input = entry.querySelector(".zgp-pathinput");
+  input.value = "comments/*";
+  let prevented = false;
+
+  world.api.onTableKeydown(world.window, {
+    key: "Enter",
+    target: input,
+    preventDefault: () => {
+      prevented = true;
+    },
+  });
+
+  assert.equal(prevented, true);
+  assert.deepEqual(world.stored()[0].paths, ["*comments/*"]);
+});
+
+test("a chip's × drops only that pattern", () => {
+  const world = createWorld({
+    domains: [{ host: "reddit.com", paths: ["/a/*", "/b/*"] }],
+  });
+  const table = world.withAnchor();
+  world.api.onTableClick(world.window, { target: table.querySelector(".zgp-site") });
+
+  const firstChip = world.document.querySelectorAll(".zgp-chip")[0];
+  world.api.onTableClick(world.window, { target: firstChip.querySelector(".zgp-chip-remove") });
+
+  assert.deepEqual(world.stored()[0].paths, ["/b/*"]);
+  assert.equal(world.document.querySelectorAll(".zgp-chip").length, 1);
+});
+
 test("the table is placed under its heading and styled once", () => {
   const world = createWorld();
-  const anchor = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
-  anchor.id = "zen-glance-plus-domains";
-  world.document.documentElement.appendChild(anchor);
-
-  assert.equal(world.api.injectTable(world.window), true);
-  const table = world.document.getElementById("zen-glance-plus-domains-table");
+  const table = world.withAnchor();
   assert.ok(table);
   assert.equal(table.parentNode, world.document.documentElement);
   assert.equal(world.sheetCalls.length, 1);
@@ -408,33 +593,24 @@ test("nothing is injected when the heading is not there", () => {
 
 test("the Add button stores the typed site and clears the field", () => {
   const world = createWorld();
-  const anchor = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
-  anchor.id = "zen-glance-plus-domains";
-  world.document.documentElement.appendChild(anchor);
-  world.api.injectTable(world.window);
-
-  const table = world.document.getElementById("zen-glance-plus-domains-table");
-  const input = table.querySelector(".zgp-input");
+  const table = world.withAnchor();
+  const input = table.querySelector(".zgp-siteinput");
   input.value = "https://www.youtube.com/watch?v=abc";
-  const add = table.querySelector(".zgp-addbutton");
-
+  const add = table.querySelector('[data-act="add"]');
   world.api.onTableClick(world.window, { target: add });
 
-  assert.deepEqual(world.stored(), [{ host: "youtube.com", tabs: true, links: false }]);
+  assert.deepEqual(world.stored(), [
+    { host: "youtube.com", tabs: true, links: false, paths: [] },
+  ]);
   assert.equal(table.querySelectorAll(".zgp-row").length, 1);
   assert.equal(input.value, "");
   assert.equal(input.focused, true);
 });
 
-test("Enter in the field adds the site too", () => {
+test("Enter in the site field adds the site too", () => {
   const world = createWorld();
-  const anchor = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
-  anchor.id = "zen-glance-plus-domains";
-  world.document.documentElement.appendChild(anchor);
-  world.api.injectTable(world.window);
-
-  const table = world.document.getElementById("zen-glance-plus-domains-table");
-  const input = table.querySelector(".zgp-input");
+  const table = world.withAnchor();
+  const input = table.querySelector(".zgp-siteinput");
   input.value = "example.com";
   let prevented = false;
 
@@ -452,36 +628,22 @@ test("Enter in the field adds the site too", () => {
 
 test("a switch in the table saves immediately", () => {
   const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false }] });
-  const anchor = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
-  anchor.id = "zen-glance-plus-domains";
-  world.document.documentElement.appendChild(anchor);
-  world.api.injectTable(world.window);
-
-  const table = world.document.getElementById("zen-glance-plus-domains-table");
-  const row = table.querySelector(".zgp-row");
-  const linksBox = row.querySelectorAll("input")[1];
+  const table = world.withAnchor();
+  const linksBox = table.querySelectorAll(".zgp-row")[0].querySelectorAll("input")[1];
   linksBox.checked = true;
-
   world.api.onTableChange(world.window, { target: linksBox });
 
-  assert.deepEqual(world.stored(), [{ host: "example.com", tabs: true, links: true }]);
+  assert.deepEqual(world.stored(), [
+    { host: "example.com", tabs: true, links: true, paths: [] },
+  ]);
 });
 
 test("the remove button drops its row", () => {
   const world = createWorld({
-    domains: [
-      { host: "a.example" },
-      { host: "b.example" },
-    ],
+    domains: [{ host: "a.example" }, { host: "b.example" }],
   });
-  const anchor = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
-  anchor.id = "zen-glance-plus-domains";
-  world.document.documentElement.appendChild(anchor);
-  world.api.injectTable(world.window);
-
-  const table = world.document.getElementById("zen-glance-plus-domains-table");
-  const remove = table.querySelectorAll(".zgp-remove")[0];
-  world.api.onTableClick(world.window, { target: remove });
+  const table = world.withAnchor();
+  world.api.onTableClick(world.window, { target: table.querySelectorAll(".zgp-remove")[0] });
 
   assert.deepEqual(
     world.stored().map(rule => rule.host),
@@ -501,12 +663,12 @@ test("the shipped preferences carry the heading the table hangs under", () => {
   assert.equal(api.UI_ANCHOR, heading.id);
 });
 
-test("the shipped stylesheet exists and styles the table it is loaded for", () => {
+test("the shipped stylesheet styles the table and its pattern editor", () => {
   const css = fs.readFileSync(path.join(repoRoot, "styles", "domains.css"), "utf8");
+  for (const selector of [".zgp-row", ".zgp-site", ".zgp-badge", ".zgp-paths", ".zgp-chip"]) {
+    assert.ok(css.includes(selector), `${selector} is styled`);
+  }
   assert.ok(css.includes("#zen-glance-plus-domains-table"));
-  assert.ok(css.includes(".zgp-row"));
-  assert.ok(css.includes(".zgp-input"));
-  assert.ok(css.includes(".zgp-remove"));
 });
 
 /* ---------------------------------------------------------------- runner */

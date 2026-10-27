@@ -1,4 +1,4 @@
-# Zen Glance Plus
+# Glance Plus
 
 A Zen Browser mod that opens a new tab as a Glance instead of a new page. Two layers decide:
 
@@ -41,15 +41,34 @@ A tab is classified once, in this order: essentials first, because they are pinn
 
 Under **Sites** in the same panel, a table decides per domain. Type a site and press Add or Enter; a pasted address is reduced to its host, a leading `www.` comes off, and duplicates and anything that is not a host are refused.
 
-Each row has two switches and a remove button:
+Each row has two switches, a remove button, and — under the site name — a list of link patterns:
 
 | Column | Effect |
 | --- | --- |
-| Site | The domain, and every subdomain of it. `reddit.com` covers `old.reddit.com` |
+| Site | The domain, and every subdomain of it. `reddit.com` covers `old.reddit.com`. Click it to open the row's link patterns |
 | New tabs | A new tab for this site opens as a Glance, whatever kind of tab it was opened from |
 | Same tab | A link that would replace the tab you are on opens as a Glance instead, even with the global redirection switch off |
 
 A row answers for its domain in both directions: with **New tabs** off, that site never glances a new tab, even from an essential. Sites without a row fall back to the five switches above. Changes are saved as you make them and apply to the next page you open.
+
+### Link patterns
+
+A row without patterns glances every link on its site. Click the site name and add patterns to narrow it — for example, on `reddit.com`, glance the posts and nothing else:
+
+```
+/r/*/comments/*      a post from a subreddit listing
+*/comments/*         a post opened from a profile or the front page
+```
+
+A pattern is matched against the address path and its query, never the domain, because the row already supplies the domain:
+
+- `*` stands for anything, including `/`.
+- A pattern starting with `/` is anchored at the start of the path. One that starts with `*` may match anywhere.
+- A pattern typed without a leading slash is treated as `*pattern`, so `comments/*` is the same as `*/comments/*`.
+- A pasted address keeps only its path, so `https://www.reddit.com/r/*/comments/*` becomes `/r/*/comments/*`.
+- Matching is case-sensitive, and the query string counts: `/watch?*` matches `?v=…`, `/watch` does not.
+
+Once a row has patterns, only the links that match one of them glance. Everything else on that site opens the ordinary way, whatever the switches say. Remove every pattern to put the row back to "any link on this site".
 
 ## Behaviour worth knowing
 

@@ -1,5 +1,5 @@
 /**
- * Zen Glance Plus — test harness
+ * Glance Plus — test harness
  *
  * Runs the real `scripts/zen-glance-plus.uc.js` inside a Node VM against
  * stubbed browser globals that mirror the shapes the script reads and writes.
@@ -404,6 +404,54 @@ test("a site row with same tab off keeps that site in the tab", () => {
     triggeringPrincipal: contentPrincipal,
   });
   assert.equal(world.openGlanceCalls.length, 1, "a site without a row still follows the switch");
+});
+
+test("a site row narrows itself to the links its patterns match", async () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "reddit.com", tabs: true, links: false, paths: ["/r/*/comments/*"] },
+      ]),
+    },
+  });
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/some_title/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "a post opens as a Glance");
+
+  world.setOverlay(false);
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "a subreddit listing stays a tab");
+
+  world.gBrowser.addTab("https://www.reddit.com/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "the front page stays a tab");
+
+  world.gBrowser.addTab("https://www.reddit.com/settings/profile", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "settings stay a tab");
+});
+
+test("patterns gate a same-tab redirect the same way", () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "reddit.com", tabs: true, links: true, paths: ["/r/*/comments/*"] },
+      ]),
+    },
+  });
+  world.window.openLinkIn("https://www.reddit.com/r/zen/comments/9/title/", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openGlanceCalls.length, 1);
+
+  world.window.openLinkIn("https://www.reddit.com/r/zen/", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openGlanceCalls.length, 1, "a listing still replaces the tab");
+  assert.equal(world.openLinkInCalls.length, 1);
 });
 
 test("nothing is converted while Zen is animating a Glance", async () => {

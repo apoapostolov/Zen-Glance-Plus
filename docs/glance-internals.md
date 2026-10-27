@@ -76,7 +76,7 @@ Commands `cmd_zenGlanceClose`, `cmd_zenGlanceExpand` and `cmd_zenGlanceSplit` ma
 | Search or context-menu search result | `onSearchSelectCommand("tab")` → `#openGlanceForSearch()` | Gated by `zen.glance.enabled` and `zen.glance.enable-contextmenu-search` |
 | **Automatically**, external link from an essential tab | `shouldOpenTabInGlance()` ← `onTabOpen(browser, uri)` ← patched `BrowserDOMWindow.openURI` | Requires the owner to be pinned and an app tab, a different domain, `zen.glance.open-essential-external-links`, and `zen.glance.enabled` |
 
-The last row is the only automatic rule, and it is hardcoded to essentials with a cross-domain check. Nothing in the browser lets a kind of tab opt itself in. That gap is what Zen Glance Plus fills.
+The last row is the only automatic rule, and it is hardcoded to essentials with a cross-domain check. Nothing in the browser lets a kind of tab opt itself in. That gap is what Glance Plus fills.
 
 ## Tab kinds, as the browser marks them
 

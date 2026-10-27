@@ -1,5 +1,5 @@
 /**
- * Zen Glance Plus — Zen Browser mod
+ * Glance Plus — Zen Browser mod
  * https://github.com/apoapostolov/Zen-Glance-Plus
  * License: MIT
  *
@@ -96,6 +96,47 @@
     return text;
   }
 
+  /**
+   * A link pattern, reduced to a path glob. A pasted address loses its scheme
+   * and host, and a pattern that does not start at the root is anchored
+   * anywhere in the path instead.
+   */
+  function normalisePathPattern(value) {
+    let text = String(value ?? "").trim();
+    if (!text) {
+      return null;
+    }
+    text = text.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "");
+    text = text.replace(/\s+/g, "");
+    if (!text) {
+      return null;
+    }
+    if (!text.startsWith("/") && !text.startsWith("*")) {
+      text = `*${text}`;
+    }
+    // A lone wildcard means every link, which is what an empty list means.
+    return text.length > 1 ? text : null;
+  }
+
+  function parsePaths(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const paths = [];
+    for (const entry of value) {
+      // Only strings: a pref edited by hand can hold anything, and a number
+      // must not turn into a pattern nobody typed.
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const pattern = normalisePathPattern(entry);
+      if (pattern && !paths.includes(pattern)) {
+        paths.push(pattern);
+      }
+    }
+    return paths;
+  }
+
   /** The stored pref, in the one shape the rest of the mod reads. */
   function parseDomains(raw) {
     let parsed;
@@ -118,7 +159,12 @@
         continue;
       }
       seen.add(host);
-      rules.push({ host, tabs: entry.tabs !== false, links: entry.links === true });
+      rules.push({
+        host,
+        tabs: entry.tabs !== false,
+        links: entry.links === true,
+        paths: parsePaths(entry.paths),
+      });
     }
     return rules;
   }
@@ -157,6 +203,42 @@
       }
     }
     return null;
+  }
+
+  /** The path and query of an address, which is what a link pattern matches. */
+  function pathOf(urlString) {
+    try {
+      const url = new URL(String(urlString));
+      return `${url.pathname}${url.search}`;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function pathMatches(pattern, target) {
+    const source = String(pattern)
+      .replace(/([.+^${}()|[\]\\?])/g, "\\$1")
+      .replace(/\*/g, ".*");
+    try {
+      return new RegExp(`^${source}$`).test(target);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * A row with no patterns answers for every link on its site; a row with
+   * patterns answers only for the links that match one of them.
+   */
+  function linkMatchesRule(rule, urlString) {
+    if (!rule || !Array.isArray(rule.paths) || rule.paths.length === 0) {
+      return true;
+    }
+    const path = pathOf(urlString);
+    if (!path) {
+      return false;
+    }
+    return rule.paths.some(pattern => pathMatches(pattern, path));
   }
 
   /* --------------------------------------------------------- tab kinds */
@@ -308,7 +390,10 @@
     // A row for this site answers for its domain, in both directions.
     const rule = domainRuleFor(url);
     if (rule) {
-      return rule.tabs ? { url, parent, kind, site: rule.host } : null;
+      if (!rule.tabs || !linkMatchesRule(rule, url)) {
+        return null;
+      }
+      return { url, parent, kind, site: rule.host };
     }
     if (!shouldGlanceFrom(kind)) {
       return null;
@@ -418,7 +503,10 @@
     // A row for this site answers on its own, whatever the global switch says.
     const rule = domainRuleFor(url);
     if (rule) {
-      return rule.links ? { url, parent, kind: "normal", site: rule.host } : null;
+      if (!rule.links || !linkMatchesRule(rule, url)) {
+        return null;
+      }
+      return { url, parent, kind: "normal", site: rule.host };
     }
     if (!setting("redirect") || sourceKind(parent) !== "normal") {
       return null;
@@ -458,7 +546,7 @@
     if (current.some(rule => rule.host === host)) {
       return null;
     }
-    const next = [...current, { host, tabs: true, links: false }];
+    const next = [...current, { host, tabs: true, links: false, paths: [] }];
     writeDomains(next);
     return next;
   }
@@ -490,6 +578,41 @@
     return next;
   }
 
+  function addPath(index, value, rules) {
+    const pattern = normalisePathPattern(value);
+    const current = rules ?? readDomains();
+    if (!pattern || !Number.isInteger(index) || !current[index]) {
+      return null;
+    }
+    const paths = current[index].paths ?? [];
+    if (paths.includes(pattern)) {
+      return null;
+    }
+    const next = current.map((rule, position) =>
+      position === index ? { ...rule, paths: [...paths, pattern] } : rule
+    );
+    writeDomains(next);
+    return next;
+  }
+
+  function removePath(index, position, rules) {
+    const current = rules ?? readDomains();
+    if (!Number.isInteger(index) || !current[index] || !Number.isInteger(position)) {
+      return null;
+    }
+    const paths = current[index].paths ?? [];
+    if (position < 0 || position >= paths.length) {
+      return null;
+    }
+    const next = current.map((rule, rowIndex) =>
+      rowIndex === index
+        ? { ...rule, paths: paths.filter((_, at) => at !== position) }
+        : rule
+    );
+    writeDomains(next);
+    return next;
+  }
+
   /* ------------------------------------------------- the table, as elements */
 
   function el(doc, tag, className) {
@@ -500,16 +623,35 @@
     return node;
   }
 
+  /** Rows whose link patterns are open, kept across re-renders. */
+  const expandedHosts = new Set();
+
   /**
    * One row. Text goes in through `textContent` and every attribute through
    * `setAttribute`, so a stored site can never become markup.
    */
   function buildRow(doc, rule, index) {
-    const row = el(doc, "div", "zgp-row");
-    row.setAttribute("data-index", String(index));
+    const entry = el(doc, "div", "zgp-entry");
+    entry.setAttribute("data-index", String(index));
 
-    const site = el(doc, "span", "zgp-site");
-    site.textContent = rule.host;
+    const row = el(doc, "div", "zgp-row");
+
+    const site = el(doc, "button", "zgp-site");
+    site.setAttribute("type", "button");
+    site.setAttribute("data-act", "toggle");
+    site.setAttribute("aria-expanded", String(expandedHosts.has(rule.host)));
+    site.setAttribute(
+      "title",
+      rule.paths.length ? rule.paths.join("\n") : "Any link on this site"
+    );
+    const name = el(doc, "span", "zgp-site-name");
+    name.textContent = rule.host;
+    site.appendChild(name);
+    if (rule.paths.length) {
+      const badge = el(doc, "span", "zgp-badge");
+      badge.textContent = rule.paths.length === 1 ? "1 link" : `${rule.paths.length} links`;
+      site.appendChild(badge);
+    }
 
     const makeBox = (flag, checked, label) => {
       const wrapper = el(doc, "label", "zgp-box");
@@ -536,7 +678,54 @@
     row.appendChild(makeBox("tabs", rule.tabs, `New tabs on ${rule.host}`));
     row.appendChild(makeBox("links", rule.links, `Same tab links on ${rule.host}`));
     row.appendChild(remove);
-    return row;
+
+    const paths = el(doc, "div", "zgp-paths");
+    if (!expandedHosts.has(rule.host)) {
+      paths.setAttribute("hidden", "");
+    }
+
+    const add = el(doc, "div", "zgp-add");
+    const input = doc.createElementNS(XHTML, "input");
+    input.setAttribute("type", "text");
+    input.setAttribute("class", "zgp-input zgp-pathinput");
+    input.setAttribute("placeholder", "/r/*/comments/*");
+    input.setAttribute("aria-label", `Links that glance on ${rule.host}`);
+    input.setAttribute("spellcheck", "false");
+    const addButton = el(doc, "button", "zgp-addbutton");
+    addButton.setAttribute("type", "button");
+    addButton.setAttribute("data-act", "addpath");
+    addButton.textContent = "Add";
+    add.appendChild(input);
+    add.appendChild(addButton);
+    paths.appendChild(add);
+
+    const chips = el(doc, "div", "zgp-chips");
+    rule.paths.forEach((pattern, position) => {
+      const chip = el(doc, "span", "zgp-chip");
+      chip.setAttribute("data-index", String(position));
+      const text = el(doc, "span", "zgp-chip-text");
+      text.textContent = pattern;
+      const kill = el(doc, "button", "zgp-chip-remove");
+      kill.setAttribute("type", "button");
+      kill.setAttribute("data-act", "removepath");
+      kill.setAttribute("aria-label", `Remove ${pattern} from ${rule.host}`);
+      kill.textContent = "×";
+      chip.appendChild(text);
+      chip.appendChild(kill);
+      chips.appendChild(chip);
+    });
+    paths.appendChild(chips);
+
+    const any = el(doc, "p", "zgp-anylink");
+    any.textContent = "Any link on this site";
+    if (rule.paths.length) {
+      any.setAttribute("hidden", "");
+    }
+    paths.appendChild(any);
+
+    entry.appendChild(row);
+    entry.appendChild(paths);
+    return entry;
   }
 
   function fillRows(doc, root, rules) {
@@ -565,7 +754,7 @@
     const add = el(doc, "div", "zgp-add");
     const input = doc.createElementNS(XHTML, "input");
     input.setAttribute("type", "text");
-    input.setAttribute("class", "zgp-input");
+    input.setAttribute("class", "zgp-input zgp-siteinput");
     input.setAttribute("placeholder", "example.com");
     input.setAttribute("aria-label", "Site to add");
     input.setAttribute("spellcheck", "false");
@@ -651,10 +840,11 @@
       return;
     }
     const action = button.getAttribute("data-act");
-    const row = button.closest(".zgp-row");
-    const index = row ? Number(row.getAttribute("data-index")) : -1;
+    const entry = button.closest(".zgp-entry");
+    const index = entry ? Number(entry.getAttribute("data-index")) : -1;
+
     if (action === "add") {
-      const input = table.querySelector(".zgp-input");
+      const input = table.querySelector(".zgp-siteinput");
       const next = addDomain(input?.value ?? "");
       if (next) {
         if (input) {
@@ -669,6 +859,41 @@
     }
     if (action === "remove") {
       const next = removeDomain(index);
+      if (next) {
+        rerender(win, next);
+      }
+      return;
+    }
+    if (action === "toggle") {
+      const rules = readDomains();
+      const rule = rules[index];
+      if (!rule) {
+        return;
+      }
+      if (expandedHosts.has(rule.host)) {
+        expandedHosts.delete(rule.host);
+      } else {
+        expandedHosts.add(rule.host);
+      }
+      rerender(win, rules);
+      return;
+    }
+    if (action === "addpath") {
+      const input = entry?.querySelector(".zgp-pathinput");
+      const next = addPath(index, input?.value ?? "");
+      if (next) {
+        if (input) {
+          input.value = "";
+        }
+        rerender(win, next);
+      }
+      input?.focus?.();
+      return;
+    }
+    if (action === "removepath") {
+      const chip = button.closest(".zgp-chip");
+      const position = chip ? Number(chip.getAttribute("data-index")) : -1;
+      const next = removePath(index, position);
       if (next) {
         rerender(win, next);
       }
@@ -697,12 +922,20 @@
     if (!table) {
       return;
     }
-    const input = table.querySelector(".zgp-input");
-    if (!input || event.target !== input) {
+    const target = event.target;
+    const entry = target?.closest?.(".zgp-entry");
+    const pathInput = entry?.querySelector?.(".zgp-pathinput");
+    if (pathInput && target === pathInput) {
+      event.preventDefault();
+      onTableClick(win, { target: entry.querySelector('[data-act="addpath"]') });
+      return;
+    }
+    const input = table.querySelector(".zgp-siteinput");
+    if (!input || target !== input) {
       return;
     }
     event.preventDefault();
-    onTableClick(win, { target: table.querySelector(".zgp-addbutton") });
+    onTableClick(win, { target: table.querySelector('[data-act="add"]') });
   }
 
   function injectTable(win) {
@@ -908,13 +1141,19 @@
     DEFAULTS,
     // Sites
     normaliseDomain,
+    normalisePathPattern,
     parseDomains,
+    parsePaths,
     readDomains,
     writeDomains,
     domainRuleFor,
+    pathMatches,
+    linkMatchesRule,
     addDomain,
     removeDomain,
     setDomainFlag,
+    addPath,
+    removePath,
     buildTable,
     fillRows,
     injectTable,

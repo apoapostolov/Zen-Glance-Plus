@@ -5,6 +5,7 @@
 First version.
 
 - A table of sites where each row decides its domain's new tabs and same-tab links, saved as you edit.
+- Link patterns per site: a row can be narrowed to the pages that should glance, such as a subreddit's posts and not its listings, while the rest of the site opens normally.
 - The table is drawn under **Sites** in the mod's own panel, so the settings page and the switches live together.
 - A new tab becomes a Glance, decided by the kind of tab it was opened from: essentials and pinned tabs on, ordinary tabs off.
 - A New Tab page counts as its own kind and is on by default.
