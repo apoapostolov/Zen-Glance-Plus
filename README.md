@@ -17,12 +17,14 @@
 </p>
 
 <p align="center">
-  <img src="assets/settings.png" alt="Glance Plus settings: five switches by tab kind, and a table of sites with their link patterns" width="760">
+  <img src="assets/settings.png" alt="Glance Plus settings: five switches by tab kind, and a table of sites with a Link switch, a New tabs switch and their link patterns" width="760">
 </p>
 
 ## What it changes
 
 Zen's Glance shows a page over the tab you are on. Stock Zen only raises it for a gesture: a modifier click on a link, a bookmark or search result with the modifier held, or a link that leaves an essential tab. Glance Plus makes the Glance the ordinary way a page opens, decided by the kind of tab it came from and, per site, by the kind of page it is.
+
+Both ways a page can open count: a tab the browser creates, and a link inside a page that opens a tab of its own. A post clicked inside its own site's essential is the second kind, and it glances too.
 
 ## Install
 
@@ -67,16 +69,23 @@ Patterns match the address path and query, never the domain, because the row alr
 
 - Zen holds one Glance at a time. When a second page matches while one is open, the open one is turned into a real tab and the new page is shown as a Glance.
 - A page that would have opened in a background tab opens as a Glance instead, which brings it on screen.
-- `Apply to Normal Tab Redirection` and a row's **Link** switch cover page-initiated opens that reach the browser window, such as a context menu's "open in this tab". A plain left click inside a page is performed by the content process and never reaches the browser window, so no mod of this shape can divert it. Nothing typed in the address bar is affected.
+- A link that opens a tab from inside a page — `target="_blank"`, a middle click, `window.open` — is judged on the address it will load, not the empty tab that carries it. That is what makes a post clicked inside its own site's essential open as a Glance, which Zen's own rule refuses because the domains match.
+- One thing is out of reach: a plain left click that navigates the tab you are already on creates no tab at all, so there is nothing to divert. `Apply to Normal Tab Redirection` and a row's **Link** switch cover the page-initiated opens that do reach the browser window, such as a context menu's "open link in this tab". Nothing typed in the address bar is affected.
 - Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
 - Nothing is converted while Zen runs a Glance animation.
 
 ## How it works
 
-The script wraps `gBrowser.addTab`, the one function every tab-opening path in the browser window reaches, and which carries the address. It records a plan there, then converts the new tab on the `TabOpen` event that `addTab` dispatches, passing the opened tab to `gZenGlanceManager.openGlance()` as an existing tab so no second tab is created and no second load starts.
+Two seams, because a page can open a tab in two ways that look different from the browser window.
 
-`addTab` is the seam rather than `TabOpen` alone because `TabOpen` fires before the browser begins loading, at which point the tab still holds `about:blank` and there is no address to test. `docs/glance-internals.md` documents the browser code this rests on, with file and line references from Zen Twilight 1.24t.
+The first is `gBrowser.addTab`, which every tab the browser creates passes through and which carries the address. The mod records a plan there and converts the new tab on the `TabOpen` event that `addTab` dispatches, handing the opened tab to `gZenGlanceManager.openGlance()` as an existing tab so no second tab is created and no second load starts. `addTab` rather than `TabOpen` alone, because `TabOpen` fires before the browser begins loading, when the tab still holds `about:blank` and there is no address to test.
+
+The second is `gZenGlanceManager.shouldOpenTabInGlance`, Zen's own check. A tab opened by a link inside a page reaches `addTab` empty and loads itself afterwards, so the browser window never sees its address; Zen keeps that address and passes it to its own check along with the tab it created. The mod answers there too, with the same switches and site patterns, and leaves Zen's answer alone when Zen's answer is yes. `docs/glance-internals.md` documents the browser code both rest on, with file and line references from Zen Twilight 1.24t.
+
+## When something does not work
+
+The mod writes `<profile>/zen-glance-plus.log` as it runs: one line when it loads, one when it starts with its hook state and site count, one per tab it decides about, and one for how the settings table was placed. It is the fastest way to tell "the script never ran" from "the script ran and declined", and it costs a few kilobytes at most.
 
 ## Testing
 
@@ -85,7 +94,7 @@ node tests/zen-glance-plus.test.mjs scripts/zen-glance-plus.uc.js
 node tests/sites.test.mjs scripts/zen-glance-plus.uc.js
 ```
 
-Both harnesses run the shipped script in a Node VM. The first drives stubbed browser globals: every tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, a site row and its patterns overriding a switch, and the restore path. The second supplies a small DOM and covers the site list from storage to the rendered table and back, including the pattern editor. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset of either suite.
+Both harnesses run the shipped script in a Node VM. The first drives stubbed browser globals: every tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, a site row and its patterns overriding a switch, and the restore path. The second supplies a small DOM and covers the site list from storage to the rendered table and back, including the pattern editor and the three ways the table can find its place in the settings page. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset of either suite.
 
 ## Licence
 

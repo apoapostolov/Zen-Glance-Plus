@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9 — 2026-10-27
+
+- The README now describes the settings panel as it is — a **Link** switch before **New tabs**, a square glyph that adds a pattern, pills the height of their field — and the settings screenshot is regenerated from the current markup.
+- The limits paragraph was wrong in the direction that matters least until you hit it: a link that opens a tab from inside a page is covered now, and the README says so, alongside the one case that remains out of reach, a plain click that navigates the tab you are already on.
+- `How it works` names both seams, and a short section explains the log file the mod writes, so a report can distinguish a script that never ran from one that declined.
+
 ## 1.0.8 — 2026-10-27
 
 - The second column is called **Link** and comes before **New tabs**, so both columns read as what they govern: a click that would replace the page, and a link that opens a tab.
