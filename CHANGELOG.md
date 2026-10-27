@@ -1,0 +1,13 @@
+# Changelog
+
+## 0.1.0 — 2026-10-27
+
+First version.
+
+- A new tab becomes a Glance, decided by the kind of tab it was opened from: essentials and pinned tabs on, ordinary tabs off.
+- A New Tab page counts as its own kind and is on by default.
+- A page-initiated open that would replace the ordinary tab you are on can be turned into a Glance, off by default.
+- The opened tab is reused through `gZenGlanceManager.openGlance()`, so no second tab and no second load.
+- A second matching page promotes the open Glance to a tab first, because Zen holds one at a time.
+- Zen's own Glance switch and its animation state are respected; essential, pinned, bulk, lazy and session-restore opens are left alone.
+- Test harness covering every switch, the conversion, the conflict, the redirect seam, the preference defaults and the restore path.

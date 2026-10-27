@@ -1,0 +1,35 @@
+[
+  { "type": "separator", "label": "**Apply to**" },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.essential",
+    "label": "Apply to Essentials",
+    "defaultValue": true
+  },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.pinned",
+    "label": "Apply to Pinned Tabs",
+    "defaultValue": true
+  },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.normal",
+    "label": "Apply to Normal Tabs",
+    "defaultValue": false
+  },
+
+  { "type": "separator", "label": "**More Settings**" },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.newtab",
+    "label": "Apply to New Tab Pages",
+    "defaultValue": true
+  },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.redirect",
+    "label": "Apply to Normal Tab Redirection",
+    "defaultValue": false
+  }
+]

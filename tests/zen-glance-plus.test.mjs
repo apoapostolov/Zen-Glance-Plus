@@ -1,0 +1,474 @@
+/**
+ * Zen Glance Plus — test harness
+ *
+ * Runs the real `scripts/zen-glance-plus.uc.js` inside a Node VM against
+ * stubbed browser globals that mirror the shapes the script reads and writes.
+ * Covers the tab-kind policy, the conversion and the redirect seam without a
+ * browser restart.
+ *
+ *   node tests/zen-glance-plus.test.mjs scripts/zen-glance-plus.uc.js
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import assert from "node:assert/strict";
+
+const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const repoRoot = path.dirname(here);
+const scriptPath = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : path.join(repoRoot, "scripts", "zen-glance-plus.uc.js");
+
+const source = fs.readFileSync(scriptPath, "utf8");
+
+/* --------------------------------------------------------------- fixtures */
+
+function makeTab(id, { attrs = {}, pinned = false, url = "https://example.com/" } = {}) {
+  const map = new Map(Object.entries(attrs));
+  const tab = {
+    id,
+    pinned,
+    isConnected: true,
+    closing: false,
+    linkedBrowser: { currentURI: url ? { spec: url } : null },
+    hasAttribute: name => map.has(name),
+    setAttribute: (name, value) => map.set(name, value),
+    getAttribute: name => (map.has(name) ? map.get(name) : null),
+    removeAttribute: name => map.delete(name),
+  };
+  tab.glanceTab = null;
+  return tab;
+}
+
+function createWorld({ prefs = {}, conflict = "promote" } = {}) {
+  const listeners = new Map();
+  const timers = [];
+  const openGlanceCalls = [];
+  const fullyOpenCalls = [];
+  const openLinkInCalls = [];
+  const openTrustedLinkInCalls = [];
+
+  const tabContainer = {
+    addEventListener: (type, fn) => {
+      if (!listeners.has(type)) {
+        listeners.set(type, []);
+      }
+      listeners.get(type).push(fn);
+    },
+    removeEventListener: (type, fn) => {
+      const list = listeners.get(type) ?? [];
+      const index = list.indexOf(fn);
+      if (index >= 0) {
+        list.splice(index, 1);
+      }
+    },
+    dispatch: (type, target) => {
+      for (const fn of [...(listeners.get(type) ?? [])]) {
+        fn({ type, target });
+      }
+    },
+    listenerCount: type => (listeners.get(type) ?? []).length,
+  };
+
+  const normalTab = makeTab("normal");
+  const world = {
+    normalTab,
+    tabs: [normalTab],
+    browsers: new Map(),
+    openGlanceCalls,
+    fullyOpenCalls,
+    openLinkInCalls,
+    openTrustedLinkInCalls,
+    timers,
+  };
+
+  const browserOf = tab => {
+    let browser = world.browsers.get(tab);
+    if (!browser) {
+      browser = { id: `browser-${tab.id}` };
+      world.browsers.set(tab, browser);
+    }
+    return browser;
+  };
+  browserOf(normalTab);
+
+  const prefMap = new Map([
+    ["zen-glance-plus.essential", true],
+    ["zen-glance-plus.pinned", true],
+    ["zen-glance-plus.normal", false],
+    ["zen-glance-plus.newtab", true],
+    ["zen-glance-plus.redirect", false],
+    ...Object.entries(prefs),
+  ]);
+
+  let overlayOpen = false;
+
+  const gBrowser = {
+    selectedTab: normalTab,
+    tabContainer,
+    tabbox: { getBoundingClientRect: () => ({ width: 1200, height: 800 }) },
+    tabs: world.tabs,
+    getTabForBrowser: browser => {
+      for (const [tab, b] of world.browsers) {
+        if (b === browser) {
+          return tab;
+        }
+      }
+      return null;
+    },
+    addTab(uriString, params = {}) {
+      const tab = makeTab(`tab-${world.tabs.length}`, {
+        url: typeof uriString === "string" ? uriString : uriString?.spec,
+      });
+      world.tabs.push(tab);
+      world.browsers.set(tab, { id: `browser-${tab.id}` });
+      if (!params.inBackground) {
+        gBrowser.selectedTab = tab;
+      }
+      // Real Tabbrowser fires TabOpen inside addTab, before the load starts.
+      tabContainer.dispatch("TabOpen", tab);
+      return tab;
+    },
+  };
+  world.gBrowser = gBrowser;
+  world.addTabOriginal = gBrowser.addTab;
+
+  const manager = {
+    _animating: false,
+    lastLinkClickData: { clientX: 40, clientY: 60, width: 200, height: 20 },
+    openGlance(data, existingTab, ownerTab) {
+      openGlanceCalls.push({ data, existingTab, ownerTab });
+      overlayOpen = true;
+      if (existingTab) {
+        existingTab.setAttribute("zen-glance-tab", true);
+        existingTab.setAttribute("glance-id", "g1");
+      }
+      return Promise.resolve(existingTab ?? null);
+    },
+    fullyOpenGlance() {
+      fullyOpenCalls.push(true);
+      overlayOpen = false;
+      return Promise.resolve();
+    },
+    getTabOrGlanceParent(tab) {
+      return tab;
+    },
+  };
+
+  const document = {
+    querySelector: selector =>
+      selector.includes("zen-glance-overlay") && overlayOpen ? { fake: true } : null,
+  };
+
+  const windowListeners = new Map();
+
+  const sandbox = {
+    console,
+    URL,
+    Promise,
+    RegExp,
+    Map,
+    Set,
+    Object,
+    Array,
+    String,
+    Math,
+    JSON,
+    setTimeout: (fn, ms) => {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    clearTimeout: () => {},
+    Services: {
+      prefs: {
+        getBoolPref: (name, fallback = false) =>
+          prefMap.has(name) ? Boolean(prefMap.get(name)) : fallback,
+        getStringPref: (name, fallback = "") =>
+          prefMap.has(name) ? String(prefMap.get(name)) : fallback,
+      },
+      scriptSecurityManager: {
+        getSystemPrincipal: () => ({ isSystemPrincipal: true }),
+      },
+    },
+    gBrowser,
+    document,
+    window: null,
+  };
+
+  sandbox.window = {
+    gBrowser,
+    gZenGlanceManager: manager,
+    innerWidth: 1200,
+    innerHeight: 800,
+    addEventListener: (type, fn) => {
+      windowListeners.set(type, fn);
+    },
+    openLinkIn(url, where, params) {
+      openLinkInCalls.push({ url, where, params });
+      return "opened";
+    },
+    openTrustedLinkIn(url, where, params) {
+      openTrustedLinkInCalls.push({ url, where, params });
+      return "trusted-opened";
+    },
+  };
+  world.openLinkInOriginal = sandbox.window.openLinkIn;
+
+  const context = vm.createContext(sandbox);
+  vm.runInContext(source, context, { filename: scriptPath });
+
+  world.api = sandbox.window.__zenGlancePlus;
+  world.window = sandbox.window;
+  world.manager = manager;
+  world.setPref = (name, value) => prefMap.set(name, value);
+  world.setOverlay = value => {
+    overlayOpen = value;
+  };
+  world.setAnimating = value => {
+    manager._animating = value;
+  };
+  world.runTimers = () => {
+    while (timers.length) {
+      timers.shift().fn();
+    }
+  };
+  world.select = tab => {
+    gBrowser.selectedTab = tab;
+  };
+  return world;
+}
+
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+const contentPrincipal = { isSystemPrincipal: false, spec: "https://example.com" };
+
+/* ------------------------------------------------------------------ tests */
+
+const tests = [];
+const test = (name, fn) => tests.push({ name, fn });
+
+test("a new tab from an essential becomes a Glance", async () => {
+  const world = createWorld();
+  const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
+  world.select(essential);
+  const tab = world.gBrowser.addTab("https://example.org/a", { inBackground: false });
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1);
+  assert.equal(world.openGlanceCalls[0].existingTab, tab);
+  assert.equal(world.openGlanceCalls[0].ownerTab, essential);
+  assert.equal(world.openGlanceCalls[0].data.url, undefined);
+});
+
+test("a new tab from a pinned tab becomes a Glance", async () => {
+  const world = createWorld();
+  const pinned = makeTab("pinned", { pinned: true });
+  world.select(pinned);
+  world.gBrowser.addTab("https://example.org/b", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1);
+  assert.equal(world.openGlanceCalls[0].ownerTab, pinned);
+});
+
+test("a new tab from a normal tab is left alone by default", async () => {
+  const world = createWorld();
+  world.gBrowser.addTab("https://example.org/c", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("Apply to Normal Tabs turns the normal-tab case on", async () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.normal": true } });
+  world.gBrowser.addTab("https://example.org/c", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1);
+});
+
+test("a New Tab page counts as its own kind, by marker and by address", async () => {
+  const world = createWorld();
+  const empty = makeTab("empty", { attrs: { "zen-empty-tab": "" }, url: "about:newtab" });
+  world.select(empty);
+  world.gBrowser.addTab("https://example.org/d", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1);
+
+  // The first conversion left a Glance open, and Zen holds one at a time.
+  world.setOverlay(false);
+  const byUrl = makeTab("by-url", { url: "about:newtab" });
+  world.select(byUrl);
+  world.gBrowser.addTab("https://example.org/e", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 2);
+});
+
+test("Apply to New Tab Pages off leaves the New Tab page alone", async () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.newtab": false } });
+  world.select(makeTab("empty", { attrs: { "zen-empty-tab": "" } }));
+  world.gBrowser.addTab("https://example.org/f", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("essentials and pinned tabs can each be switched off", async () => {
+  const world = createWorld({
+    prefs: { "zen-glance-plus.essential": false, "zen-glance-plus.pinned": false },
+  });
+  world.select(makeTab("e", { attrs: { "zen-essential": "" }, pinned: true }));
+  world.gBrowser.addTab("https://example.org/g", {});
+  world.select(makeTab("p", { pinned: true }));
+  world.gBrowser.addTab("https://example.org/h", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("addresses the browser cannot Glance are left alone", async () => {
+  const world = createWorld();
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  for (const url of ["about:config", "chrome://browser/content/browser.xhtml", "data:text/html,x"]) {
+    world.gBrowser.addTab(url, {});
+  }
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("pinned, essential, bulk and lazy opens are never converted", async () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.normal": true } });
+  world.gBrowser.addTab("https://example.org/i", { pinned: true });
+  world.gBrowser.addTab("https://example.org/j", { essential: true });
+  world.gBrowser.addTab("https://example.org/k", { bulkOrderedOpen: true });
+  world.gBrowser.addTab("https://example.org/l", { createLazyBrowser: true });
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("Zen's own Glance switch overrides the mod", async () => {
+  const world = createWorld({ prefs: { "zen.glance.enabled": false } });
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  world.gBrowser.addTab("https://example.org/m", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("nothing is converted while Zen is animating a Glance", async () => {
+  const world = createWorld();
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  world.setAnimating(true);
+  world.gBrowser.addTab("https://example.org/n", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("a second matching page promotes the open Glance to a tab first", async () => {
+  const world = createWorld();
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  world.setOverlay(true);
+  const tab = world.gBrowser.addTab("https://example.org/o", {});
+  await tick();
+  await tick();
+  assert.equal(world.fullyOpenCalls.length, 1);
+  world.runTimers();
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1);
+  assert.equal(world.openGlanceCalls[0].existingTab, tab);
+});
+
+test("the redirect switch is off by default and leaves openLinkIn alone", () => {
+  const world = createWorld();
+  const result = world.window.openLinkIn("https://example.org/p", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(result, "opened");
+  assert.equal(world.openGlanceCalls.length, 0);
+  assert.equal(world.openLinkInCalls.length, 1);
+});
+
+test("with redirection on, a page-initiated same-tab open becomes a Glance", () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.redirect": true } });
+  world.window.openLinkIn("https://example.org/q", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openLinkInCalls.length, 0);
+  assert.equal(world.openGlanceCalls.length, 1);
+  assert.equal(world.openGlanceCalls[0].data.url, "https://example.org/q");
+  assert.equal(world.openGlanceCalls[0].existingTab, undefined);
+});
+
+test("redirection never takes the address bar: system-principal opens navigate", () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.redirect": true } });
+  world.window.openLinkIn("https://example.org/r", "current", {
+    triggeringPrincipal: { isSystemPrincipal: true },
+  });
+  assert.equal(world.openLinkInCalls.length, 1);
+  assert.equal(world.openGlanceCalls.length, 0);
+});
+
+test("redirection leaves new-tab and new-window destinations to the tab policy", () => {
+  const world = createWorld({ prefs: { "zen-glance-plus.redirect": true } });
+  world.window.openLinkIn("https://example.org/s", "tab", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openGlanceCalls.length, 0);
+  assert.equal(world.openLinkInCalls.length, 1);
+});
+
+test("stopping the mod restores addTab, both link openers and the listeners", () => {
+  const world = createWorld();
+  assert.notEqual(world.gBrowser.addTab, world.addTabOriginal);
+  assert.notEqual(world.window.openLinkIn, world.openLinkInOriginal);
+  world.api.stop();
+  assert.equal(world.gBrowser.addTab, world.addTabOriginal);
+  assert.equal(world.window.openLinkIn, world.openLinkInOriginal);
+  assert.equal(world.gBrowser.tabContainer.listenerCount("TabOpen"), 0);
+  assert.equal(world.gBrowser.tabContainer.listenerCount("TabSelect"), 0);
+});
+
+test("the shipped preferences match the documented defaults", () => {
+  const prefs = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "preferences.json"), "utf8")
+  );
+  const world = createWorld();
+  const checks = prefs.filter(entry => entry.type === "checkbox");
+  assert.equal(checks.length, 5);
+  for (const entry of checks) {
+    const key = entry.property.replace("zen-glance-plus.", "");
+    assert.equal(
+      world.api.DEFAULTS[key],
+      entry.defaultValue,
+      `${entry.label} default disagrees with the script`
+    );
+    assert.equal(entry.label, `Apply to ${labelFor(key)}`);
+  }
+  function labelFor(key) {
+    return {
+      essential: "Essentials",
+      pinned: "Pinned Tabs",
+      normal: "Normal Tabs",
+      newtab: "New Tab Pages",
+      redirect: "Normal Tab Redirection",
+    }[key];
+  }
+});
+
+test("the script ships no inline stylesheet", () => {
+  assert.equal(/createElement\(\s*["']style["']\s*\)/.test(source), false);
+  assert.equal(source.includes("<style"), false);
+});
+
+/* ---------------------------------------------------------------- runner */
+
+let failed = 0;
+const only = process.env.ONLY;
+const selected = only ? tests.filter(entry => entry.name.includes(only)) : tests;
+for (const { name, fn } of selected) {
+  try {
+    await fn();
+    console.log(`  ok   ${name}`);
+  } catch (error) {
+    failed += 1;
+    console.log(`  FAIL ${name}`);
+    console.log(`       ${error.message}`);
+  }
+}
+
+console.log(`\n${selected.length - failed}/${selected.length} passed (${path.basename(scriptPath)})`);
+process.exit(failed ? 1 : 0);

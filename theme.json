@@ -1,0 +1,30 @@
+{
+  "id": "zen-glance-plus",
+  "name": "Zen Glance Plus",
+  "description": "Open every new tab as a Glance instead of a new page.",
+  "author": "Apostol Apostolov",
+  "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://github.com/apoapostolov/Zen-Glance-Plus",
+  "readme": "README.md",
+  "createdAt": "2026-10-27",
+  "tags": [
+    "glance",
+    "tabs",
+    "essentials",
+    "zen"
+  ],
+  "fork": [
+    "zen"
+  ],
+  "preferences": "preferences.json",
+  "scripts": {
+    "scripts/zen-glance-plus.uc.js": {
+      "name": "Zen Glance Plus",
+      "description": "Opens a new tab as a Glance, decided by the kind of tab it was opened from.",
+      "include": [
+        "chrome://browser/content/browser.xhtml"
+      ]
+    }
+  }
+}
