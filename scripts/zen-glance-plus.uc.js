@@ -614,12 +614,12 @@
       if (!rule.tabs || !linkMatchesRule(rule, url)) {
         return null;
       }
-      return { url, parent, kind, site: rule.host };
+      return { url, parent, kind, site: rule.host, via: "addTab" };
     }
     if (!shouldGlanceFrom(kind)) {
       return null;
     }
-    return { url, parent, kind };
+    return { url, parent, kind, via: "addTab" };
   }
 
   const nowMs = () =>
@@ -680,6 +680,9 @@
       return false;
     }
     const plan = planFor(spec, { ownerTab: parent });
+    if (plan) {
+      plan.via = "content";
+    }
     trace(`content open ${plan ? "glance" : "pass"} ${spec.slice(0, 120)}`);
     if (plan) {
       const startedAt = nowMs();
@@ -702,6 +705,15 @@
     const original = manager.shouldOpenTabInGlance;
     state.originalShouldGlance = original;
     manager.shouldOpenTabInGlance = function (tab, uri) {
+      // A Glance shows a page, so anything that is not one is answered here
+      // before Zen's rule is consulted. The browser's own new tab is the case
+      // that matters: opened from a pinned tab it looks like a different
+      // domain to Zen, which would otherwise convert a blank tab into a Glance.
+      const spec = String(uri?.spec ?? uri ?? "");
+      if (!glanceableUrl(spec)) {
+        trace(`glance check ignored ${spec.slice(0, 120)}`);
+        return false;
+      }
       try {
         if (original.call(this, tab, uri)) {
           return true;
@@ -756,6 +768,10 @@
     if (!manager?.openGlance || !tab?.isConnected || tab.closing) {
       return;
     }
+    trace(
+      `adopt via=${plan.via ?? "?"} asked=${String(plan.url ?? "").slice(0, 120)} ` +
+        `tab=${String(tab.linkedBrowser?.currentURI?.spec ?? "").slice(0, 120)}`
+    );
     try {
       manager.openGlance(
         { url: undefined, ...animationRect() },
@@ -827,12 +843,12 @@
       if (!rule.links || !linkMatchesRule(rule, url)) {
         return null;
       }
-      return { url, parent, kind: "normal", site: rule.host };
+      return { url, parent, kind: "normal", site: rule.host, via: "redirect" };
     }
     if (!setting("redirect") || sourceKind(parent) !== "normal") {
       return null;
     }
-    return { url, parent, kind: "normal" };
+    return { url, parent, kind: "normal", via: "redirect" };
   }
 
   function openGlanceInstead(plan) {

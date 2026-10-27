@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.15 — 2026-10-27
+
+- The sidebar's plus button opened a Glance instead of a new tab. Zen's own rule reads a blank tab opened from a pinned tab as a page on another domain, and the mod asked that rule before it looked at the address, so it agreed. A Glance now needs an actual page first: anything that is not http, https or file is answered with no before Zen is consulted. Ctrl+T was already unaffected, and still is.
+
 ## 1.0.14 — 2026-10-27
 
 - The rule that Sine draws above the first section sat directly under the mod's own name and read as a second title divider. **Apply to** now carries an id and the panel's stylesheet drops that one line; the later headings keep theirs.

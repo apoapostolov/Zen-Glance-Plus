@@ -609,6 +609,30 @@ test("a link opened from a page is answered with the address Zen kept", () => {
   assert.equal(world.manager.shouldOpenTabInGlance(opened, listing), false);
 });
 
+test("the browser's own new tab is never turned into a Glance", () => {
+  const world = createWorld();
+  world.api.stop();
+  // Zen's rule says yes for anything opened from a pinned app tab, which is
+  // what the sidebar's + button looks like from here.
+  world.manager.shouldOpenTabInGlance = () => true;
+  world.api.start();
+
+  const opened = makeTab("opened", { url: "about:newtab" });
+  for (const spec of ["about:newtab", "about:blank", "about:home", "about:preferences"]) {
+    assert.equal(
+      world.manager.shouldOpenTabInGlance(opened, { spec }),
+      false,
+      spec + " is not a page to glance"
+    );
+  }
+
+  assert.equal(
+    world.manager.shouldOpenTabInGlance(opened, { spec: "https://example.org/a" }),
+    true,
+    "a real page still follows Zen's own rule"
+  );
+});
+
 test("Zen's own decision is kept when its rule already says glance", () => {
   const world = createWorld();
   world.api.stop();
