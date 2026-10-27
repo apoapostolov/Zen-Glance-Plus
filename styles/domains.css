@@ -1,0 +1,106 @@
+/* The site table inside Zen Glance Plus' settings panel.
+ *
+ * It is added under the "Sites" heading of the mod's panel, so it lives in
+ * about:preferences rather than in the browser window. Everything here uses
+ * the page's own text colour and size, so it reads as part of the panel in
+ * light and dark themes alike.
+ */
+
+#zen-glance-plus-domains-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-block: 4px 10px;
+  font: inherit;
+  color: inherit;
+}
+
+#zen-glance-plus-domains-table .zgp-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#zen-glance-plus-domains-table .zgp-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+#zen-glance-plus-domains-table .zgp-input:focus {
+  outline: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+  outline-offset: 1px;
+}
+
+#zen-glance-plus-domains-table .zgp-addbutton,
+#zen-glance-plus-domains-table .zgp-remove {
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+#zen-glance-plus-domains-table .zgp-addbutton:hover,
+#zen-glance-plus-domains-table .zgp-remove:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+#zen-glance-plus-domains-table .zgp-remove {
+  padding: 2px 8px;
+  color: color-mix(in srgb, currentColor 65%, transparent);
+}
+
+#zen-glance-plus-domains-table .zgp-head,
+#zen-glance-plus-domains-table .zgp-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 72px 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+#zen-glance-plus-domains-table .zgp-head {
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(2),
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(3) {
+  text-align: center;
+}
+
+#zen-glance-plus-domains-table .zgp-row {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+#zen-glance-plus-domains-table .zgp-row:hover {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+#zen-glance-plus-domains-table .zgp-site {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#zen-glance-plus-domains-table .zgp-box {
+  display: flex;
+  justify-content: center;
+}
+
+#zen-glance-plus-domains-table .zgp-box input {
+  margin: 0;
+}
+
+#zen-glance-plus-domains-table .zgp-empty {
+  margin: 0;
+  opacity: 0.7;
+}

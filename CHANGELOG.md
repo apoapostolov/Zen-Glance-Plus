@@ -4,6 +4,8 @@
 
 First version.
 
+- A table of sites where each row decides its domain's new tabs and same-tab links, saved as you edit.
+- The table is drawn under **Sites** in the mod's own panel, so the settings page and the switches live together.
 - A new tab becomes a Glance, decided by the kind of tab it was opened from: essentials and pinned tabs on, ordinary tabs off.
 - A New Tab page counts as its own kind and is on by default.
 - A page-initiated open that would replace the ordinary tab you are on can be turned into a Glance, off by default.

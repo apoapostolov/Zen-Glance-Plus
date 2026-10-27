@@ -349,6 +349,63 @@ test("Zen's own Glance switch overrides the mod", async () => {
   assert.equal(world.openGlanceCalls.length, 0);
 });
 
+test("a site row decides for its domain before the kind switches", async () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "quiet.example", tabs: false },
+        { host: "peek.example", tabs: true },
+      ]),
+    },
+  });
+  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  world.gBrowser.addTab("https://quiet.example/page", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0, "quiet.example is switched off for the site");
+
+  world.select(makeTab("plain"));
+  world.gBrowser.addTab("https://sub.peek.example/page", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 1, "peek.example glances from a normal tab");
+  assert.equal(world.openGlanceCalls[0].data.url, undefined);
+});
+
+test("a site row can send a same-tab open to a Glance with the global switch off", () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "peek.example", tabs: true, links: true },
+      ]),
+    },
+  });
+  world.window.openLinkIn("https://peek.example/a", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openLinkInCalls.length, 0);
+  assert.equal(world.openGlanceCalls.length, 1);
+});
+
+test("a site row with same tab off keeps that site in the tab", () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.redirect": true,
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "quiet.example", tabs: true, links: false },
+      ]),
+    },
+  });
+  world.window.openLinkIn("https://quiet.example/a", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openGlanceCalls.length, 0);
+  assert.equal(world.openLinkInCalls.length, 1);
+
+  world.window.openLinkIn("https://other.example/a", "current", {
+    triggeringPrincipal: contentPrincipal,
+  });
+  assert.equal(world.openGlanceCalls.length, 1, "a site without a row still follows the switch");
+});
+
 test("nothing is converted while Zen is animating a Glance", async () => {
   const world = createWorld();
   world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));

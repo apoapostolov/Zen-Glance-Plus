@@ -31,5 +31,7 @@
     "property": "zen-glance-plus.redirect",
     "label": "Apply to Normal Tab Redirection",
     "defaultValue": false
-  }
+  },
+
+  { "type": "separator", "id": "zen-glance-plus-domains", "label": "**Sites**" }
 ]

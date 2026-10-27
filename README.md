@@ -1,6 +1,9 @@
 # Zen Glance Plus
 
-A Zen Browser mod that opens a new tab as a Glance instead of a new page. It decides by the kind of tab the page was opened from: an essential, a pinned tab, an ordinary tab, or a New Tab page.
+A Zen Browser mod that opens a new tab as a Glance instead of a new page. Two layers decide:
+
+- a **Sites** table, where one row turns Glance on for that domain's new tabs and, separately, for links that would replace the tab you are on;
+- five switches by **kind of tab**, for every site without a row: opened from an essential, a pinned tab, an ordinary tab or a New Tab page.
 
 Stock Zen creates a Glance for a gesture (a modifier click), for a bookmark or search result with the modifier held, and automatically only for links that leave an essential tab and cross a domain boundary. There is no way to say "anything opened from here should be a Glance". This mod adds that.
 
@@ -34,6 +37,20 @@ A tab is classified once, in this order: essentials first, because they are pinn
 
 `Apply to Normal Tab Redirection` covers a page-initiated open that would replace the tab you are on, such as a context-menu "open in this tab". Nothing typed in the address bar is affected: those opens carry the system principal and always navigate the tab. A plain left click on a link inside a page never reaches the browser window at all — the content process performs that navigation itself — so that click is out of reach for any mod of this shape.
 
+## Sites
+
+Under **Sites** in the same panel, a table decides per domain. Type a site and press Add or Enter; a pasted address is reduced to its host, a leading `www.` comes off, and duplicates and anything that is not a host are refused.
+
+Each row has two switches and a remove button:
+
+| Column | Effect |
+| --- | --- |
+| Site | The domain, and every subdomain of it. `reddit.com` covers `old.reddit.com` |
+| New tabs | A new tab for this site opens as a Glance, whatever kind of tab it was opened from |
+| Same tab | A link that would replace the tab you are on opens as a Glance instead, even with the global redirection switch off |
+
+A row answers for its domain in both directions: with **New tabs** off, that site never glances a new tab, even from an essential. Sites without a row fall back to the five switches above. Changes are saved as you make them and apply to the next page you open.
+
 ## Behaviour worth knowing
 
 - Zen holds one Glance at a time. When a second page matches while a Glance is open, the open one is turned into a real tab and the new page is shown as a Glance.
@@ -54,9 +71,10 @@ The seam is `addTab` rather than `TabOpen` on its own because `TabOpen` fires be
 
 ```
 node tests/zen-glance-plus.test.mjs scripts/zen-glance-plus.uc.js
+node tests/sites.test.mjs scripts/zen-glance-plus.uc.js
 ```
 
-The harness runs the shipped script in a Node VM against stubbed browser globals. It covers each tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, the preference defaults against `preferences.json`, and the restore path. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset.
+Both harnesses run the shipped script in a Node VM. The first drives stubbed browser globals and covers each tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, a site row overriding a switch, the preference defaults against `preferences.json`, and the restore path. The second supplies a small DOM and covers the site list from storage to the rendered table and back: normalising what you type, parsing a damaged pref, adding, flipping a switch, removing, and placing the table under its heading once. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset of either suite.
 
 ## Licence
 
