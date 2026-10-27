@@ -33,6 +33,7 @@
    */
   let traceBudget = 80;
   let traceApis = null;
+  let traceQueue = Promise.resolve();
   function traceModules() {
     if (traceApis) {
       return traceApis;
@@ -62,9 +63,10 @@
       }
       const file = apis.paths.join(apis.paths.profileDir, "zen-glance-plus.log");
       const line = `${new Date().toISOString()} ${message}`;
-      apis.io
-        .readUTF8(file)
-        .catch(() => "")
+      // One write at a time: two traces in the same tick used to read the same
+      // file and the second write dropped the first line.
+      traceQueue = traceQueue
+        .then(() => apis.io.readUTF8(file).catch(() => ""))
         .then(existing => {
           const kept = existing.length > 48000 ? existing.slice(-24000) : existing;
           return apis.io.writeUTF8(file, `${kept}${line}\n`);
@@ -1136,35 +1138,122 @@
     onTableClick(win, { target: table.querySelector('[data-act="add"]') });
   }
 
-  function injectTable(win) {
-    const doc = win?.document;
-    if (!doc || !doc.documentElement) {
-      return false;
-    }
-    const anchor = doc.getElementById(UI_ANCHOR);
-    if (!anchor) {
-      if (!missingAnchorLogged.has(win)) {
-        missingAnchorLogged.add(win);
-        trace("table: no Sites anchor on the settings page");
-      }
-      return false;
-    }
-    if (doc.getElementById(UI_TABLE)) {
-      return false;
-    }
-    const domains = readDomains();
-    const table = buildTable(doc, domains);
-    trace(`table: ${domains.length} site rows`);
-    if (typeof anchor.after === "function") {
-      anchor.after(table);
+  function insertAfter(node, el) {
+    if (typeof node.after === "function") {
+      node.after(el);
     } else {
-      anchor.parentNode?.insertBefore(table, anchor.nextSibling);
+      node.parentNode?.insertBefore(el, node.nextSibling);
     }
-    table.addEventListener("click", event => onTableClick(win, event));
-    table.addEventListener("change", event => onTableChange(win, event));
-    table.addEventListener("keydown", event => onTableKeydown(win, event));
-    loadTableStyles(win);
-    return true;
+  }
+
+  /** Every document the settings page might keep its preference rows in. */
+  function settingsDocuments(win) {
+    const docs = [];
+    const push = doc => {
+      try {
+        if (doc?.documentElement && !docs.includes(doc)) {
+          docs.push(doc);
+        }
+      } catch (e) {
+        /* a document that cannot be read is not a candidate */
+      }
+    };
+    push(win?.document);
+    let frames = [];
+    try {
+      frames = Array.from(win?.frames ?? []);
+    } catch (e) {
+      frames = [];
+    }
+    frames.forEach(frame => push(frame?.document));
+    try {
+      for (const el of win?.document?.querySelectorAll("browser, iframe") ?? []) {
+        push(el.contentDocument);
+      }
+    } catch (e) {
+      /* nothing to add */
+    }
+    return docs;
+  }
+
+  /** The row carrying the Sites heading, whatever Sine gave it as an id. */
+  function separatorHost(doc) {
+    let labels = [];
+    try {
+      labels = Array.from(doc.querySelectorAll(".separator-label"));
+    } catch (e) {
+      return null;
+    }
+    const match = labels.find(el =>
+      /^\s*\*{0,2}\s*Sites\s*\*{0,2}\s*$/.test(String(el.textContent ?? ""))
+    );
+    return match?.parentElement ?? match?.parentNode ?? null;
+  }
+
+  /**
+   * Where the table goes, in order of how much the page tells us: the id the
+   * separator should carry, then the heading itself, then the dialog holding
+   * the rows. Returns how it was placed so the log says which.
+   */
+  function placeTable(doc, table) {
+    const anchor = doc.getElementById?.(UI_ANCHOR);
+    if (anchor) {
+      insertAfter(anchor, table);
+      return "id";
+    }
+    const host = separatorHost(doc);
+    if (host) {
+      insertAfter(host, table);
+      return "separator";
+    }
+    for (const selector of [
+      "#sineItemPreferenceDialogContent",
+      ".sineItemPreferenceDialogContent",
+    ]) {
+      const container = doc.querySelector?.(selector);
+      if (container && typeof container.append === "function") {
+        container.append(table);
+        return "container";
+      }
+    }
+    return null;
+  }
+
+  function injectTable(win) {
+    try {
+      return injectTableInto(win);
+    } catch (e) {
+      trace(`table: failed ${e?.message ?? e}`);
+      return false;
+    }
+  }
+
+  function injectTableInto(win) {
+    for (const doc of settingsDocuments(win)) {
+      if (!doc?.documentElement || doc.getElementById?.(UI_TABLE)) {
+        continue;
+      }
+      const domains = readDomains();
+      const table = buildTable(doc, domains);
+      const placement = placeTable(doc, table);
+      if (!placement) {
+        continue;
+      }
+      trace(`table: ${domains.length} site rows, placed by ${placement}`);
+      if (typeof table.addEventListener !== "function") {
+        return true;
+      }
+      table.addEventListener("click", event => onTableClick(win, event));
+      table.addEventListener("change", event => onTableChange(win, event));
+      table.addEventListener("keydown", event => onTableKeydown(win, event));
+      loadTableStyles(win);
+      return true;
+    }
+    if (!missingAnchorLogged.has(win)) {
+      missingAnchorLogged.add(win);
+      trace(`table: no place for it in ${settingsDocuments(win).length} documents`);
+    }
+    return false;
   }
 
   function isPreferencesUri(uri) {
@@ -1200,6 +1289,9 @@
     } catch (e) {
       /* the table still appears the next time the page is opened */
     }
+    // A mod's settings rows are built when its Configure dialog opens, which
+    // is not always a mutation the observer sees first. A click is.
+    win.addEventListener("click", check, true);
   }
 
   function hookPreferences(browser) {

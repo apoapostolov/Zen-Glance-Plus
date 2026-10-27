@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7 — 2026-10-27
+
+- The Sites table finds its place again. It was mounted when the settings page loaded, but a mod's settings rows are built only when its Configure dialog opens, so the mount ran before the anchor existed and correctly reported that it had nothing to hang from. The mount now also runs after a click in the settings page, looks in frames as well as the top document, and falls back from the element id to the Sites heading and then to the dialog that holds the rows, recording in the log which of the three it used.
+- Log writes are serialised. Two lines written in the same tick read the same file, so the second write dropped the first.
+
 ## 1.0.6 — 2026-10-27
 
 - The page-holding behaviour from 1.0.5 is gone. Keeping a Glance invisible until it painted traded a blank panel for a late panel, which is worse than watching the page arrive. A Glance shows its page as it loads, as it did in 1.0.4, and the open is still timed in the log.

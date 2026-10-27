@@ -23,6 +23,9 @@ const source = fs.readFileSync(scriptPath, "utf8");
 /* ------------------------------------------------------------- a small DOM */
 
 const matches = (node, selector) => {
+  if (selector.startsWith("#")) {
+    return node.id === selector.slice(1);
+  }
   if (selector.startsWith(".")) {
     const wanted = selector.slice(1);
     return (node.getAttribute("class") ?? "").split(/\s+/).includes(wanted);
@@ -130,6 +133,9 @@ function makeElement(tag) {
     },
     querySelectorAll(selector) {
       return walk(element, node => matches(node, selector));
+    },
+    append(...nodes) {
+      nodes.forEach(node => element.appendChild(node));
     },
     focus() {
       element.focused = true;
@@ -353,6 +359,36 @@ test("Space removes the row it belongs to", () => {
 
   assert.equal(world.stored().length, 1);
   assert.equal(world.stored()[0].host, "other.test");
+});
+
+test("the table finds its place from the Sites heading when the id is gone", () => {
+  const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false, paths: [] }] });
+  const ns = "http://www.w3.org/1999/xhtml";
+  const row = world.document.createElementNS(ns, "vbox");
+  const label = world.document.createElementNS(ns, "label");
+  label.setAttribute("class", "separator-label");
+  label.textContent = "Sites";
+  row.appendChild(label);
+  world.document.documentElement.appendChild(row);
+
+  assert.equal(world.api.injectTable(world.window), true);
+
+  const table = world.document.getElementById("zen-glance-plus-domains-table");
+  assert.ok(table, "the table should be drawn without the id anchor");
+  const siblings = row.parentNode.children;
+  assert.equal(siblings[siblings.indexOf(row) + 1], table, "it belongs right after the Sites row");
+});
+
+test("the table falls back to the dialog that holds the rows", () => {
+  const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false, paths: [] }] });
+  const ns = "http://www.w3.org/1999/xhtml";
+  const container = world.document.createElementNS(ns, "div");
+  container.id = "sineItemPreferenceDialogContent";
+  world.document.documentElement.appendChild(container);
+
+  assert.equal(world.api.injectTable(world.window), true);
+  assert.equal(container.children.length, 1);
+  assert.equal(container.children[0].id, "zen-glance-plus-domains-table");
 });
 
 /* --------------------------------------------------------- link patterns */
