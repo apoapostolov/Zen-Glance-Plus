@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.14 — 2026-10-27
+
+- The rule that Sine draws above the first section sat directly under the mod's own name and read as a second title divider. **Apply to** now carries an id and the panel's stylesheet drops that one line; the later headings keep theirs.
+
 ## 1.0.13 — 2026-10-27
 
 - A site row has a third switch, **Domain**, the per-site form of `Same Domain Only`: pages opened from that site glance only while they stay in it. It reads the tab that started the open rather than the address being opened, because a row already answers only for its own domain, so a target-side reading would have been a switch that did nothing. Subdomains still count as the same site. Off on every row, shipped ones included.

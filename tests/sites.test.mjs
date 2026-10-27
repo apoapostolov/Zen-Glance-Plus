@@ -854,6 +854,12 @@ test("the shipped preferences carry the heading the table hangs under", () => {
 
 test("the shipped stylesheet styles the table and its pattern editor", () => {
   const css = fs.readFileSync(path.join(repoRoot, "styles", "domains.css"), "utf8");
+  // The panel keeps its section headings and drops the rule that would sit
+  // directly under the mod's name.
+  assert.ok(
+    /#zen-glance-plus-apply-to\s*>\s*hr\s*\{[^}]*display:\s*none/.test(css),
+    "the first separator's rule should be hidden"
+  );
   for (const selector of [".zgp-row", ".zgp-site", ".zgp-badge", ".zgp-paths", ".zgp-chip"]) {
     assert.ok(css.includes(selector), `${selector} is styled`);
   }

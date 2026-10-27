@@ -1,3 +1,10 @@
+/* Sine draws a rule above every section heading. The first one lands directly
+   under the mod's own name and reads as a second title divider, so the panel
+   keeps the headings and drops that one line. */
+#zen-glance-plus-apply-to > hr {
+  display: none;
+}
+
 /* The site table inside Glance Plus' settings panel.
  *
  * It is added under the "Sites" heading of the mod's panel, so it lives in

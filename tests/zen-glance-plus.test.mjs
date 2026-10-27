@@ -726,6 +726,9 @@ test("the shipped preferences match the documented defaults", () => {
     );
     assert.equal(entry.label, labelFor(key));
   }
+  const first = prefs.find(entry => entry.type === "separator");
+  assert.equal(first.id, "zen-glance-plus-apply-to", "the first heading needs the id the sheet hides");
+
   const headings = prefs.filter(entry => entry.type === "separator").map(entry => entry.label);
   assert.deepEqual(headings, ["**Apply to**", "**Glance applies to**", "**Sites**"]);
 
