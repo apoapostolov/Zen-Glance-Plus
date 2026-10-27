@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 — 2026-10-27
+
+- A Glance no longer shows an empty panel while its page loads. The page stays invisible until it has painted, so the tab behind it stays readable, and the log now records how long the open took, from the decision to `DOMContentLoaded` and `load`.
+
 ## 1.0.4 — 2026-10-27
 
 - Links that open a tab from inside a page are covered too. Those tabs are created empty and load themselves, so `addTab` only ever saw `about:blank` for them and nothing could be judged. The mod now answers Zen's own check, which is the one place the intended address is known, and it decides with the same switches and site patterns as every other open.

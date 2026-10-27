@@ -487,6 +487,82 @@
     return { url, parent, kind };
   }
 
+  const nowMs = () =>
+    typeof performance !== "undefined" && performance?.now ? performance.now() : Date.now();
+
+  /**
+   * Holds a Glance's page back until it has something to show. Opening one
+   * otherwise paints an empty panel first and fills it seconds later, which is
+   * what a slow page looks like when you are watching it load.
+   */
+  function holdUntilPainted(tab) {
+    const browser = tab?.linkedBrowser;
+    if (!browser?.style || typeof browser.addEventListener !== "function") {
+      return;
+    }
+    browser.style.opacity = "0";
+    let revealed = false;
+    const reveal = () => {
+      if (revealed) {
+        return;
+      }
+      revealed = true;
+      browser.style.transition = "opacity 140ms ease-out";
+      browser.style.opacity = "1";
+      setTimeout(() => {
+        browser.style.transition = "";
+        browser.style.opacity = "";
+      }, 500);
+    };
+    // A page that never paints must not stay invisible.
+    setTimeout(reveal, 6000);
+    const done = () => reveal();
+    browser.addEventListener("pageshow", done, { once: true });
+    browser.addEventListener("DOMContentLoaded", done, { once: true });
+  }
+
+  /**
+   * Times a Glance from the decision to paint, and records whether its browser
+   * element survived being moved into the parent tab: a replaced browser means
+   * the page was loaded twice, which is a fault to fix, not a slow page.
+   */
+  function watchPaint(tab, url, startedAt) {
+    const browser = tab?.linkedBrowser;
+    if (!browser || typeof browser.addEventListener !== "function") {
+      return;
+    }
+    let dcl = null;
+    let load = null;
+    let reported = false;
+    const report = reason => {
+      if (reported) {
+        return;
+      }
+      reported = true;
+      trace(
+        `paint ${reason} url=${String(url ?? "").slice(0, 90)} ` +
+          `dcl=${dcl ?? "-"} load=${load ?? "-"} ` +
+          `swapped=${tab.linkedBrowser !== browser ? "yes" : "no"}`
+      );
+    };
+    const stamp = () => Math.round(nowMs() - startedAt);
+    browser.addEventListener("DOMContentLoaded", () => (dcl = stamp()), { once: true, capture: true });
+    browser.addEventListener(
+      "load",
+      () => {
+        load = stamp();
+        report("load");
+      },
+      { once: true, capture: true }
+    );
+    setTimeout(() => report("timeout"), 15000);
+  }
+
+  function watchGlance(tab, url, startedAt = nowMs()) {
+    holdUntilPainted(tab);
+    watchPaint(tab, url, startedAt);
+  }
+
   /**
    * A link that opens a new tab from inside a page arrives at addTab as
    * about:blank: the tab is created first and the content loads it itself, so
@@ -506,6 +582,12 @@
     }
     const plan = planFor(spec, { ownerTab: parent });
     trace(`content open ${plan ? "glance" : "pass"} ${spec.slice(0, 120)}`);
+    if (plan) {
+      const startedAt = nowMs();
+      // Zen converts the tab itself right after this answer; watch it once it
+      // is in place so the timings describe the real open.
+      Promise.resolve().then(() => watchGlance(tab, spec, startedAt));
+    }
     return Boolean(plan);
   }
 
@@ -581,6 +663,7 @@
         tab,
         manager.getTabOrGlanceParent?.(plan.parent) ?? plan.parent
       );
+      watchGlance(tab, plan.url);
     } catch (e) {
       console.error("[zen-glance-plus] could not open the Glance", e);
     }

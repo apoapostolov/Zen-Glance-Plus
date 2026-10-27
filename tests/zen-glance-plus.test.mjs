@@ -536,6 +536,34 @@ test("Zen's own decision is kept when its rule already says glance", () => {
   );
 });
 
+test("a Glance's page stays hidden until it has painted", async () => {
+  const world = createWorld();
+  const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
+  world.select(essential);
+
+  const handlers = {};
+  const browser = {
+    currentURI: { spec: "about:blank" },
+    style: {},
+    addEventListener(name, fn) {
+      handlers[name] = fn;
+    },
+  };
+  const opened = makeTab("opened", { url: "about:blank" });
+  opened.owner = essential;
+  opened.linkedBrowser = browser;
+
+  world.manager.shouldOpenTabInGlance(opened, {
+    spec: "https://www.reddit.com/r/zen/comments/1abc/t/",
+  });
+  await tick();
+
+  assert.equal(browser.style.opacity, "0", "the empty panel should not be shown");
+
+  handlers.pageshow();
+  assert.equal(browser.style.opacity, "1", "the page appears once it can be read");
+});
+
 test("stop puts Zen's own rule back", () => {
   const world = createWorld();
   const wrapped = world.manager.shouldOpenTabInGlance;
