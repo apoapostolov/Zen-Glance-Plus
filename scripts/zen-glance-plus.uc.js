@@ -102,6 +102,7 @@
     normal: PREF_ROOT + "normal",
     newtab: PREF_ROOT + "newtab",
     redirect: PREF_ROOT + "redirect",
+    samedomain: PREF_ROOT + "samedomain",
     domains: PREF_ROOT + "domains",
   };
 
@@ -111,6 +112,7 @@
     normal: false,
     newtab: true,
     redirect: false,
+    samedomain: false,
   };
 
   const GLANCEABLE_SCHEMES = ["http", "https", "file"];
@@ -166,6 +168,72 @@
       return null;
     }
     return text;
+  }
+
+  /**
+   * The domain a host belongs to, so `old.reddit.com` and `reddit.com` are one
+   * site. Two labels normally; three where the second is a known registry
+   * label, which is what keeps `bar.co.uk` apart from `foo.co.uk`.
+   */
+  const REGISTRY_LABELS = new Set(["ac", "co", "com", "edu", "gov", "net", "org"]);
+
+  function registrableDomain(host) {
+    const parts = String(host ?? "")
+      .toLowerCase()
+      .split(".")
+      .filter(Boolean);
+    if (!parts.length) {
+      return null;
+    }
+    if (parts.length <= 2) {
+      return parts.join(".");
+    }
+    const [second, last] = parts.slice(-2);
+    if (REGISTRY_LABELS.has(second) && last.length === 2) {
+      return parts.slice(-3).join(".");
+    }
+    return `${second}.${last}`;
+  }
+
+  function hostOf(value) {
+    const text = String(value?.href ?? value ?? "");
+    if (!text) {
+      return null;
+    }
+    try {
+      const host = new URL(text).host;
+      return host ? normaliseDomain(host) : null;
+    } catch (e) {
+      return normaliseDomain(text);
+    }
+  }
+
+  function sourceHost(parent) {
+    try {
+      return hostOf(parent?.linkedBrowser?.currentURI?.spec);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * `Same Domain Only`: a page is glanced only when it belongs to the domain
+   * the link was opened from. A source with no domain — a New Tab page — puts
+   * no constraint on where it opens.
+   */
+  function blockedByDomain(parent, url) {
+    if (!setting("samedomain")) {
+      return false;
+    }
+    const source = sourceHost(parent);
+    if (!source) {
+      return false;
+    }
+    const target = hostOf(url);
+    if (!target) {
+      return false;
+    }
+    return registrableDomain(source) !== registrableDomain(target);
   }
 
   /**
@@ -477,6 +545,9 @@
       return null;
     }
     const kind = sourceKind(parent);
+    if (blockedByDomain(parent, url)) {
+      return null;
+    }
     // A row for this site answers for its domain, in both directions.
     const rule = domainRuleFor(url);
     if (rule) {
@@ -685,6 +756,9 @@
     }
     const url = glanceableUrl(urlString);
     if (!url) {
+      return null;
+    }
+    if (blockedByDomain(parent, url)) {
       return null;
     }
     // A row for this site answers on its own, whatever the global switch says.
@@ -1502,6 +1576,8 @@
     DEFAULTS,
     // Sites
     normaliseDomain,
+    registrableDomain,
+    blockedByDomain,
     normalisePathPattern,
     parseDomains,
     parsePaths,

@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/settings.png" alt="Glance Plus settings: five switches by tab kind, and a table of sites with a Link switch, a New tabs switch and their link patterns" width="760">
+  <img src="assets/settings-panel.png" alt="Glance Plus settings: switches for the tab kinds a Glance applies to, and a table of sites each with a Link switch, a New tabs switch and its link patterns" width="760">
 </p>
 
 ## What it changes
@@ -34,15 +34,18 @@ Both ways a page can open count: a tab the browser creates, and a link inside a 
 
 ## Settings
 
-Five switches decide every site that has no row of its own.
+Six switches decide every site that has no row of its own, under two headings.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| Apply to Essentials | On | A new tab opened from an essential becomes a Glance |
-| Apply to Pinned Tabs | On | The same for a pinned tab |
-| Apply to Normal Tabs | Off | The same for an ordinary tab |
-| Apply to New Tab Pages | On | The same for a New Tab page |
-| Apply to Normal Tab Redirection | Off | A page-initiated open that would replace the ordinary tab you are on becomes a Glance instead |
+| Essentials | On | A new tab opened from an essential becomes a Glance |
+| Pinned Tabs | On | The same for a pinned tab |
+| Normal Tabs | Off | The same for an ordinary tab |
+| New Tab Pages | On | The same for a New Tab page |
+| Same Tab Pages | Off | A page-initiated open that would replace the ordinary tab you are on becomes a Glance instead |
+| Same Domain Only | Off | A page glances only when it belongs to the domain it was opened from |
+
+`Same Domain Only` compares the domains themselves, not the hosts, so `old.reddit.com` opening from `reddit.com` still counts as the same place and `github.com` opening from a Reddit tab does not. It holds for a site row as well: with the switch on, no row can glance a page outside its own domain. A New Tab page has no domain to stay in, so nothing opened from one is constrained.
 
 A tab is classified once: essentials first, because they are pinned as well, then pinned tabs, then New Tab pages, which are ordinary tabs carrying Zen's own marker, then ordinary tabs.
 

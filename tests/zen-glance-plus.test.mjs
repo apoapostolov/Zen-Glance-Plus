@@ -498,6 +498,48 @@ test("status reports what the mod is doing", () => {
   assert.equal(world.api.LOG, "[zen-glance-plus]");
 });
 
+test("Same Domain Only keeps a page in the domain it was opened from", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.samedomain", true);
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.reddit.com/",
+  });
+  world.select(essential);
+
+  const same = world.gBrowser.addTab("https://old.reddit.com/r/zen/comments/1abc/t/", {});
+  await tick();
+  assert.equal(same.getAttribute("zen-glance-tab"), true, "a subdomain is the same domain");
+
+  world.setOverlay(false);
+  const other = world.gBrowser.addTab("https://example.org/a", {});
+  await tick();
+  assert.equal(other.getAttribute("zen-glance-tab"), null, "another domain is refused");
+});
+
+test("Same Domain Only leaves a New Tab page free to open anywhere", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.samedomain", true);
+  const newTab = makeTab("newtab", { attrs: { "zen-newtab-page": "" }, url: "about:newtab" });
+  world.select(newTab);
+
+  const tab = world.gBrowser.addTab("https://example.org/a", {});
+  await tick();
+  assert.equal(tab.getAttribute("zen-glance-tab"), true, "a New Tab page has no domain to stay in");
+});
+
+test("the domain a host belongs to survives a registry label", () => {
+  const world = createWorld();
+  const domain = world.api.registrableDomain;
+  assert.equal(domain("old.reddit.com"), "reddit.com");
+  assert.equal(domain("www.reddit.com"), "reddit.com");
+  assert.equal(domain("reddit.com"), "reddit.com");
+  assert.equal(domain("news.example.co.uk"), "example.co.uk");
+  assert.equal(domain("foo.co.uk"), "foo.co.uk");
+  assert.equal(domain("a.b.example.com"), "example.com");
+});
+
 test("a link opened from a page is answered with the address Zen kept", () => {
   const world = createWorld();
   const essential = makeTab("essential", {
@@ -629,7 +671,7 @@ test("the shipped preferences match the documented defaults", () => {
   );
   const world = createWorld();
   const checks = prefs.filter(entry => entry.type === "checkbox");
-  assert.equal(checks.length, 5);
+  assert.equal(checks.length, 6);
   for (const entry of checks) {
     const key = entry.property.replace("zen-glance-plus.", "");
     assert.equal(
@@ -637,15 +679,19 @@ test("the shipped preferences match the documented defaults", () => {
       entry.defaultValue,
       `${entry.label} default disagrees with the script`
     );
-    assert.equal(entry.label, `Apply to ${labelFor(key)}`);
+    assert.equal(entry.label, labelFor(key));
   }
+  const headings = prefs.filter(entry => entry.type === "separator").map(entry => entry.label);
+  assert.deepEqual(headings, ["**Apply to**", "**Glance applies to**", "**Sites**"]);
+
   function labelFor(key) {
     return {
       essential: "Essentials",
       pinned: "Pinned Tabs",
       normal: "Normal Tabs",
       newtab: "New Tab Pages",
-      redirect: "Normal Tab Redirection",
+      redirect: "Same Tab Pages",
+      samedomain: "Same Domain Only",
     }[key];
   }
 });

@@ -3,33 +3,39 @@
   {
     "type": "checkbox",
     "property": "zen-glance-plus.essential",
-    "label": "Apply to Essentials",
+    "label": "Essentials",
     "defaultValue": true
   },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.pinned",
-    "label": "Apply to Pinned Tabs",
+    "label": "Pinned Tabs",
     "defaultValue": true
   },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.normal",
-    "label": "Apply to Normal Tabs",
+    "label": "Normal Tabs",
     "defaultValue": false
   },
 
-  { "type": "separator", "label": "**More Settings**" },
+  { "type": "separator", "label": "**Glance applies to**" },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.newtab",
-    "label": "Apply to New Tab Pages",
+    "label": "New Tab Pages",
     "defaultValue": true
   },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.redirect",
-    "label": "Apply to Normal Tab Redirection",
+    "label": "Same Tab Pages",
+    "defaultValue": false
+  },
+  {
+    "type": "checkbox",
+    "property": "zen-glance-plus.samedomain",
+    "label": "Same Domain Only",
     "defaultValue": false
   },
 
