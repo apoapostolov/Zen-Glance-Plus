@@ -1,16 +1,14 @@
 # Changelog
 
-## 0.1.0 — 2026-10-27
+## 1.0.0 — 2026-10-27
 
-First version.
+First public release. Glance Plus opens a new tab as a Glance, and decides which pages deserve one.
 
-- A table of sites where each row decides its domain's new tabs and same-tab links, saved as you edit.
-- Link patterns per site: a row can be narrowed to the pages that should glance, such as a subreddit's posts and not its listings, while the rest of the site opens normally.
-- The table is drawn under **Sites** in the mod's own panel, so the settings page and the switches live together.
-- A new tab becomes a Glance, decided by the kind of tab it was opened from: essentials and pinned tabs on, ordinary tabs off.
-- A New Tab page counts as its own kind and is on by default.
-- A page-initiated open that would replace the ordinary tab you are on can be turned into a Glance, off by default.
-- The opened tab is reused through `gZenGlanceManager.openGlance()`, so no second tab and no second load.
-- A second matching page promotes the open Glance to a tab first, because Zen holds one at a time.
-- Zen's own Glance switch and its animation state are respected; essential, pinned, bulk, lazy and session-restore opens are left alone.
-- Test harness covering every switch, the conversion, the conflict, the redirect seam, the preference defaults and the restore path.
+- A **Sites** table in the mod's own settings panel, one row per domain, with a switch for that site's new tabs and a switch for links that would replace the current tab. Rows answer for their domain and every subdomain, and override the tab-kind switches in both directions.
+- **Link patterns** per site. A row with none answers for every link on its domain; with patterns, only the paths that match one glance — a subreddit's posts open in Glance while its listings, front page and settings stay ordinary tabs. Patterns gate both switches and match the address path and query with `*` spanning slashes.
+- Five switches by **kind of tab** for sites without a row: essentials and pinned tabs on, ordinary tabs off, New Tab pages as a kind of their own, and an optional page-initiated replace of the current tab.
+- The opened tab is reused through Zen's own `openGlance()`, so a rule never creates a second tab or a second load.
+- A second matching page promotes the open Glance into a real tab first, because Zen holds one at a time.
+- Zen's own Glance switch and its animation state are respected; essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
+- Settings are saved as they are edited and take effect on the next page opened.
+- Test harnesses covering the tab-kind policy, the site list, the pattern matcher and the rendered table.

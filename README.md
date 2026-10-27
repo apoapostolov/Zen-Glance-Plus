@@ -1,90 +1,60 @@
 # Glance Plus
 
-A Zen Browser mod that opens a new tab as a Glance instead of a new page. Two layers decide:
+Zen's Glance shows a page over the tab you are on. Stock Zen only raises it for a gesture: a modifier click on a link, a bookmark or search result with the modifier held, or a link that leaves an essential tab. Glance Plus makes the Glance the ordinary way a page opens, decided by the kind of tab it came from and, per site, by the kind of page it is.
 
-- a **Sites** table, where one row turns Glance on for that domain's new tabs and, separately, for links that would replace the tab you are on;
-- five switches by **kind of tab**, for every site without a row: opened from an essential, a pinned tab, an ordinary tab or a New Tab page.
-
-Stock Zen creates a Glance for a gesture (a modifier click), for a bookmark or search result with the modifier held, and automatically only for links that leave an essential tab and cross a domain boundary. There is no way to say "anything opened from here should be a Glance". This mod adds that.
-
-It uses Zen's own Glance: the overlay, the animation, the three buttons and Escape are the browser's.
-
-## Requirements
-
-- Zen Browser with the Sine mod loader.
-- `sine.allow-unsafe-js` set to `true`. The mod is JavaScript installed from a repository rather than reviewed in the Sine store, and Sine refuses to run a non-store script without that preference. With it off the mod shows as enabled and does nothing.
+![Glance Plus settings](assets/settings.png)
 
 ## Install
 
-1. Open Sine's mods page in Zen settings.
-2. Add a mod from the repository `apoapostolov/Zen-Glance-Plus`.
-3. Confirm `sine.allow-unsafe-js` is `true` in `about:config`.
-4. Restart Zen. Chrome scripts load at startup, so a running window keeps the old state.
-
-To remove it, remove the mod in Sine and restart. Its preferences stay in `prefs.js` until you reset them in `about:config`.
+1. In Zen settings, open Sine and add a mod from the repository `apoapostolov/Zen-Glance-Plus`.
+2. Check that `sine.allow-unsafe-js` is `true` in `about:config`. A repository install is not a store install, so Sine refuses to run its script without that preference, and the mod then shows as enabled while doing nothing.
+3. Restart Zen. Chrome scripts load at startup.
 
 ## Settings
+
+Five switches decide every site that has no row of its own.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | Apply to Essentials | On | A new tab opened from an essential becomes a Glance |
-| Apply to Pinned Tabs | On | A new tab opened from a pinned tab becomes a Glance |
-| Apply to Normal Tabs | Off | A new tab opened from an ordinary tab becomes a Glance |
-| Apply to New Tab Pages | On | A new tab opened from a New Tab page becomes a Glance |
-| Apply to Normal Tab Redirection | Off | A page that would replace the ordinary tab you are on opens as a Glance instead |
+| Apply to Pinned Tabs | On | The same for a pinned tab |
+| Apply to Normal Tabs | Off | The same for an ordinary tab |
+| Apply to New Tab Pages | On | The same for a New Tab page |
+| Apply to Normal Tab Redirection | Off | A page-initiated open that would replace the ordinary tab you are on becomes a Glance instead |
 
-A tab is classified once, in this order: essentials first, because they are pinned as well; then pinned tabs; then New Tab pages, which are ordinary tabs carrying Zen's own marker; then ordinary tabs. A Glance opened from another Glance is treated as belonging to the tab underneath it.
+A tab is classified once: essentials first, because they are pinned as well, then pinned tabs, then New Tab pages, which are ordinary tabs carrying Zen's own marker, then ordinary tabs.
 
-`Apply to Normal Tab Redirection` covers a page-initiated open that would replace the tab you are on, such as a context-menu "open in this tab". Nothing typed in the address bar is affected: those opens carry the system principal and always navigate the tab. A plain left click on a link inside a page never reaches the browser window at all — the content process performs that navigation itself — so that click is out of reach for any mod of this shape.
+### Sites
 
-## Sites
+Add a domain, and its row has a switch for the site's new tabs and a switch for links that would replace the current tab. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the five switches in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
 
-Under **Sites** in the same panel, a table decides per domain. Type a site and press Add or Enter; a pasted address is reduced to its host, a leading `www.` comes off, and duplicates and anything that is not a host are refused.
-
-Each row has two switches, a remove button, and — under the site name — a list of link patterns:
-
-| Column | Effect |
-| --- | --- |
-| Site | The domain, and every subdomain of it. `reddit.com` covers `old.reddit.com`. Click it to open the row's link patterns |
-| New tabs | A new tab for this site opens as a Glance, whatever kind of tab it was opened from |
-| Same tab | A link that would replace the tab you are on opens as a Glance instead, even with the global redirection switch off |
-
-A row answers for its domain in both directions: with **New tabs** off, that site never glances a new tab, even from an essential. Sites without a row fall back to the five switches above. Changes are saved as you make them and apply to the next page you open.
+Changes save as you make them and apply to the next page you open.
 
 ### Link patterns
 
-A row without patterns glances every link on its site. Click the site name and add patterns to narrow it — for example, on `reddit.com`, glance the posts and nothing else:
+Click a site name and the row opens its patterns. With none, every link on the site glances. With patterns, only matching links do, which is how a subreddit's posts open in Glance while its listings, front page and settings stay ordinary tabs:
 
 ```
 /r/*/comments/*      a post from a subreddit listing
 */comments/*         a post opened from a profile or the front page
 ```
 
-A pattern is matched against the address path and its query, never the domain, because the row already supplies the domain:
-
-- `*` stands for anything, including `/`.
-- A pattern starting with `/` is anchored at the start of the path. One that starts with `*` may match anywhere.
-- A pattern typed without a leading slash is treated as `*pattern`, so `comments/*` is the same as `*/comments/*`.
-- A pasted address keeps only its path, so `https://www.reddit.com/r/*/comments/*` becomes `/r/*/comments/*`.
-- Matching is case-sensitive, and the query string counts: `/watch?*` matches `?v=…`, `/watch` does not.
-
-Once a row has patterns, only the links that match one of them glance. Everything else on that site opens the ordinary way, whatever the switches say. Remove every pattern to put the row back to "any link on this site".
+Patterns match the address path and query, never the domain, because the row already supplies the domain. `*` stands for anything, including `/`. A pattern beginning with `/` is anchored at the path root; one beginning with `*` matches anywhere; one typed without either is read as `*pattern`. A pasted address keeps only its path. Matching is case-sensitive.
 
 ## Behaviour worth knowing
 
-- Zen holds one Glance at a time. When a second page matches while a Glance is open, the open one is turned into a real tab and the new page is shown as a Glance.
-- A page that would have opened in a background tab opens as a Glance instead, which brings it on screen. That is what the rule asks for.
-- Opens that are not a single page are left alone: essential and pinned tab creation, "open all in tabs", session restore, and tabs created without loading.
+- Zen holds one Glance at a time. When a second page matches while one is open, the open one is turned into a real tab and the new page is shown as a Glance.
+- A page that would have opened in a background tab opens as a Glance instead, which brings it on screen.
+- `Apply to Normal Tab Redirection` and a row's **Same tab** switch cover page-initiated opens that reach the browser window, such as a context menu's "open in this tab". A plain left click inside a page is performed by the content process and never reaches the browser window, so no mod of this shape can divert it. Nothing typed in the address bar is affected.
+- Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
-- Nothing is converted while Zen is running a Glance animation.
+- Nothing is converted while Zen runs a Glance animation.
 
 ## How it works
 
-The script wraps `gBrowser.addTab`, the one function every tab-opening path in the browser window reaches, and which carries the address. The wrapped call decides from the tab the page was opened from and records a plan. On the `TabOpen` event that `addTab` dispatches, the new tab is converted with `gZenGlanceManager.openGlance()`, passing it as an existing tab so no second tab is created and no second load starts.
+The script wraps `gBrowser.addTab`, the one function every tab-opening path in the browser window reaches, and which carries the address. It records a plan there, then converts the new tab on the `TabOpen` event that `addTab` dispatches, passing the opened tab to `gZenGlanceManager.openGlance()` as an existing tab so no second tab is created and no second load starts.
 
-The seam is `addTab` rather than `TabOpen` on its own because `TabOpen` fires before the browser begins loading, when the tab still holds `about:blank` and there is no address to test.
-
-`docs/glance-internals.md` documents the browser code this is built on, with file and line references.
+`addTab` is the seam rather than `TabOpen` alone because `TabOpen` fires before the browser begins loading, at which point the tab still holds `about:blank` and there is no address to test. `docs/glance-internals.md` documents the browser code this rests on, with file and line references from Zen Twilight 1.24t.
 
 ## Testing
 
@@ -93,8 +63,8 @@ node tests/zen-glance-plus.test.mjs scripts/zen-glance-plus.uc.js
 node tests/sites.test.mjs scripts/zen-glance-plus.uc.js
 ```
 
-Both harnesses run the shipped script in a Node VM. The first drives stubbed browser globals and covers each tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, a site row overriding a switch, the preference defaults against `preferences.json`, and the restore path. The second supplies a small DOM and covers the site list from storage to the rendered table and back: normalising what you type, parsing a damaged pref, adding, flipping a switch, removing, and placing the table under its heading once. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset of either suite.
+Both harnesses run the shipped script in a Node VM. The first drives stubbed browser globals: every tab kind and its switch, the conversion, the single-Glance conflict, the redirect seam, a site row and its patterns overriding a switch, and the restore path. The second supplies a small DOM and covers the site list from storage to the rendered table and back, including the pattern editor. `ONLY="New Tab" node tests/zen-glance-plus.test.mjs` runs a subset of either suite.
 
 ## Licence
 
-MIT. See `LICENSE`. `CREDITS.md` records what the idea owes to other work.
+MIT. `CREDITS.md` records what the idea owes to other work.
