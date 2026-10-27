@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.10 — 2026-10-27
+
+- Feedly joins the shipped sites. Its row glances an article opened in Feedly's own reader (`/i/entry/*`) and leaves the feed list, discovery and saved views as ordinary tabs, so reading one item from a feed no longer costs you the list behind it.
+
 ## 1.0.9 — 2026-10-27
 
 - The README now describes the settings panel as it is — a **Link** switch before **New tabs**, a square glyph that adds a pattern, pills the height of their field — and the settings screenshot is regenerated from the current markup.

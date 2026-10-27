@@ -52,7 +52,7 @@ Add a domain, and its row has two switches: **Link** for clicks that would repla
 
 Changes save as you make them and apply to the next page you open.
 
-The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com and github.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
+The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com, github.com and feedly.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread, an article in Feedly's own reader — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
 
 ### Link patterns
 
@@ -61,6 +61,7 @@ Click a site name and the row opens its patterns. With none, every link on the s
 ```
 /r/*/comments/*      a post from a subreddit listing
 */comments/*         a post opened from a profile or the front page
+/i/entry/*           an article opened in Feedly's reader
 ```
 
 Patterns match the address path and query, never the domain, because the row already supplies the domain. `*` stands for anything, including `/`. A pattern beginning with `/` is anchored at the path root; one beginning with `*` matches anywhere; one typed without either is read as `*pattern`. A pasted address keeps only its path. Matching is case-sensitive.

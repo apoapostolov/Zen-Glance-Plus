@@ -92,6 +92,8 @@
     { host: "youtube.com", tabs: true, links: true, paths: ["/watch*", "/shorts/*"] },
     { host: "instagram.com", tabs: true, links: true, paths: ["/p/*", "/reel/*"] },
     { host: "github.com", tabs: true, links: true, paths: ["*/issues/*", "*/pull/*", "*/discussions/*"] },
+    // Feedly's own reader view for an article: https://feedly.com/i/entry/<entryId>
+    { host: "feedly.com", tabs: true, links: true, paths: ["/i/entry/*"] },
   ];
 
   const PREF = {
