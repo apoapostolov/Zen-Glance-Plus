@@ -137,6 +137,8 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
   const manager = {
     _animating: false,
     lastLinkClickData: { clientX: 40, clientY: 60, width: 200, height: 20 },
+    // Zen's own rule, false unless a case turns it on.
+    shouldOpenTabInGlance: () => false,
     openGlance(data, existingTab, ownerTab) {
       openGlanceCalls.push({ data, existingTab, ownerTab });
       overlayOpen = true;
@@ -494,6 +496,58 @@ test("status reports what the mod is doing", () => {
   assert.equal(s.switches.essential, true);
   assert.equal(s.switches.normal, false);
   assert.equal(world.api.LOG, "[zen-glance-plus]");
+});
+
+test("a link opened from a page is answered with the address Zen kept", () => {
+  const world = createWorld();
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.reddit.com/",
+  });
+  world.select(essential);
+
+  // The tab Zen created for the click, owned by the essential.
+  const opened = makeTab("opened", { url: "about:blank" });
+  opened.owner = essential;
+
+  const post = { spec: "https://www.reddit.com/r/zen/comments/1abc/t/" };
+  assert.equal(
+    world.manager.shouldOpenTabInGlance(opened, post),
+    true,
+    "a reddit post opened from the reddit essential should glance"
+  );
+
+  const listing = { spec: "https://www.reddit.com/r/zen/" };
+  assert.equal(world.manager.shouldOpenTabInGlance(opened, listing), false);
+});
+
+test("Zen's own decision is kept when its rule already says glance", () => {
+  const world = createWorld();
+  world.api.stop();
+  world.manager.shouldOpenTabInGlance = () => true;
+  world.api.start();
+
+  const opened = makeTab("opened", { url: "about:blank" });
+  assert.equal(
+    world.manager.shouldOpenTabInGlance(opened, { spec: "https://example.org/anything" }),
+    true,
+    "a site with no row still glances when Zen's rule says so"
+  );
+});
+
+test("stop puts Zen's own rule back", () => {
+  const world = createWorld();
+  const wrapped = world.manager.shouldOpenTabInGlance;
+  world.api.stop();
+
+  const restored = world.manager.shouldOpenTabInGlance;
+  assert.notEqual(restored, wrapped, "the wrapper should be gone");
+  assert.equal(
+    restored({}, { spec: "https://www.reddit.com/r/x/comments/1/t/" }),
+    false,
+    "the original rule knows nothing about reddit rows"
+  );
 });
 
 test("nothing is converted while Zen is animating a Glance", async () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 — 2026-10-27
+
+- Links that open a tab from inside a page are covered too. Those tabs are created empty and load themselves, so `addTab` only ever saw `about:blank` for them and nothing could be judged. The mod now answers Zen's own check, which is the one place the intended address is known, and it decides with the same switches and site patterns as every other open.
+- A page opened this way from an essential or a pinned tab now glances on the strength of its site row, which is what makes a post clicked inside a site's own essential open as a Glance.
+
 ## 1.0.3 — 2026-10-27
 
 - The mod writes `<profile>/zen-glance-plus.log` as it works: one line when it loads, one when it starts with its hook state and site count, and one per tab it is asked to open, saying whether it decided to make a Glance. A browser whose console cannot be reached from a page can now be asked what it did without one.

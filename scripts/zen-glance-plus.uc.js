@@ -487,6 +487,56 @@
     return { url, parent, kind };
   }
 
+  /**
+   * A link that opens a new tab from inside a page arrives at addTab as
+   * about:blank: the tab is created first and the content loads it itself, so
+   * the address never passes through addTab. Zen's own patch of the window's
+   * openURI is the only thing that knows the address, and it hands it to
+   * shouldOpenTabInGlance along with the tab it created — which is where the
+   * rules can answer for those opens as well.
+   */
+  function contentOpenShouldGlance(tab, uri) {
+    const spec = String(uri?.spec ?? uri ?? "");
+    if (!spec || tab?.hasAttribute?.("glance-id") || tab?.hasAttribute?.("zen-glance-tab")) {
+      return false;
+    }
+    const parent = tab?.owner ?? null;
+    if (!parent) {
+      return false;
+    }
+    const plan = planFor(spec, { ownerTab: parent });
+    trace(`content open ${plan ? "glance" : "pass"} ${spec.slice(0, 120)}`);
+    return Boolean(plan);
+  }
+
+  function wrapGlanceManager() {
+    const manager = window.gZenGlanceManager;
+    if (!manager || typeof manager.shouldOpenTabInGlance !== "function") {
+      trace("content opens unavailable: no shouldOpenTabInGlance");
+      return;
+    }
+    if (state.originalShouldGlance) {
+      return;
+    }
+    const original = manager.shouldOpenTabInGlance;
+    state.originalShouldGlance = original;
+    manager.shouldOpenTabInGlance = function (tab, uri) {
+      try {
+        if (original.call(this, tab, uri)) {
+          return true;
+        }
+      } catch (e) {
+        trace(`native glance check failed ${e?.message ?? e}`);
+      }
+      try {
+        return contentOpenShouldGlance(tab, uri);
+      } catch (e) {
+        trace(`content open failed ${e?.message ?? e}`);
+        return false;
+      }
+    };
+  }
+
   function openGlanceOver(tab, plan) {
     const manager = glanceManager();
     if (!manager?.openGlance) {
@@ -1200,6 +1250,7 @@
     wrapAddTab();
     wrapOpenLinkIn("openLinkIn");
     wrapOpenLinkIn("openTrustedLinkIn");
+    wrapGlanceManager();
     gBrowser.tabContainer.addEventListener("TabOpen", onTabOpen, true);
     gBrowser.tabContainer.addEventListener("TabSelect", onTabSelect, true);
     watchPreferencesTabs();
@@ -1248,6 +1299,11 @@
       return;
     }
     state.started = false;
+    const glance = window.gZenGlanceManager;
+    if (state.originalShouldGlance && glance) {
+      glance.shouldOpenTabInGlance = state.originalShouldGlance;
+      state.originalShouldGlance = null;
+    }
     if (state.originalAddTab) {
       gBrowser.addTab = state.originalAddTab;
       state.originalAddTab = null;
