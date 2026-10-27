@@ -25,9 +25,60 @@
 
   const PREF_ROOT = "zen-glance-plus.";
   const LOG = "[zen-glance-plus]";
+
+  /**
+   * A line in <profile>/zen-glance-plus.log, so a browser that will not talk to
+   * a console can still be asked what it did. Best effort: no PathUtils or
+   * IOUtils (the test harness) and the call is a no-op.
+   */
+  let traceBudget = 80;
+  let traceApis = null;
+  function traceModules() {
+    if (traceApis) {
+      return traceApis;
+    }
+    let paths = typeof PathUtils !== "undefined" ? PathUtils : null;
+    let io = typeof IOUtils !== "undefined" ? IOUtils : null;
+    if (!paths || !io) {
+      try {
+        paths = ChromeUtils.importESModule("resource://gre/modules/PathUtils.sys.mjs").PathUtils;
+        io = ChromeUtils.importESModule("resource://gre/modules/IOUtils.sys.mjs").IOUtils;
+      } catch (e) {
+        return null;
+      }
+    }
+    traceApis = paths && io ? { paths, io } : null;
+    return traceApis;
+  }
+
+  function trace(message) {
+    try {
+      if (traceBudget-- <= 0) {
+        return;
+      }
+      const apis = traceModules();
+      if (!apis) {
+        return;
+      }
+      const file = apis.paths.join(apis.paths.profileDir, "zen-glance-plus.log");
+      const line = `${new Date().toISOString()} ${message}`;
+      apis.io
+        .readUTF8(file)
+        .catch(() => "")
+        .then(existing => {
+          const kept = existing.length > 48000 ? existing.slice(-24000) : existing;
+          return apis.io.writeUTF8(file, `${kept}${line}\n`);
+        })
+        .catch(() => {});
+    } catch (e) {
+      // A log is never worth breaking the browser over.
+    }
+  }
+
   // Printed before anything else so a probe can tell a script that never
   // loaded from one that loaded and then declined to start.
   console.info(LOG, "script loaded in", String(window.location?.href || "?"));
+  trace(`load in ${String(window.location?.href || "?")}`);
   /**
    * Sites that ship configured. Only used when the domains pref has never
    * been written, so a list emptied by hand stays empty.
@@ -1085,6 +1136,12 @@
         plan = planFor(uriString, params);
       } catch (e) {
         plan = null;
+        trace(`addTab error ${e?.message ?? e}`);
+      }
+      if (plan) {
+        trace(`addTab glance ${String(uriString).slice(0, 120)}`);
+      } else {
+        trace(`addTab pass ${String(uriString).slice(0, 120)}`);
       }
       const previous = state.plan;
       state.plan = plan;
@@ -1155,6 +1212,10 @@
       { once: true }
     );
     console.info(LOG, "started with", readDomains().length, "sites configured");
+    trace(
+      `start ok hooked=${Boolean(state.originalAddTab)} sites=${readDomains().length} ` +
+        `manager=${Boolean(window.gZenGlanceManager)} glance=${readPrefBool("zen.glance.enabled", true)}`
+    );
     return true;
   }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 — 2026-10-27
+
+- The mod writes `<profile>/zen-glance-plus.log` as it works: one line when it loads, one when it starts with its hook state and site count, and one per tab it is asked to open, saying whether it decided to make a Glance. A browser whose console cannot be reached from a page can now be asked what it did without one.
+
 ## 1.0.2 — 2026-10-27
 
 - The site table lays out correctly inside the settings page. The site name and the remove control are no longer buttons, so the page's own control styling cannot centre the name in the middle of the row or refuse to let it shrink; the name starts at the left edge and ellipsises when the panel is narrow.
