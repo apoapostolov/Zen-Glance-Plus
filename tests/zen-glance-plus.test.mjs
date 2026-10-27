@@ -41,6 +41,13 @@ function makeTab(id, { attrs = {}, pinned = false, url = "https://example.com/" 
   return tab;
 }
 
+/**
+ * A tab that some page or link asked for. Firefox reports the opener as a
+ * browser element while Zen's own seams pass the tab, and both are a real
+ * opener; a tab with neither is the browser's own new tab.
+ */
+const openedFrom = (tab, params = {}) => ({ ownerTab: tab, ...params });
+
 function createWorld({ prefs = {}, conflict = "promote" } = {}) {
   const listeners = new Map();
   const timers = [];
@@ -257,7 +264,7 @@ test("a new tab from an essential becomes a Glance", async () => {
   const world = createWorld();
   const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
   world.select(essential);
-  const tab = world.gBrowser.addTab("https://example.org/a", { inBackground: false });
+  const tab = world.gBrowser.addTab("https://example.org/a", openedFrom(essential, { inBackground: false }));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1);
   assert.equal(world.openGlanceCalls[0].existingTab, tab);
@@ -269,7 +276,7 @@ test("a new tab from a pinned tab becomes a Glance", async () => {
   const world = createWorld();
   const pinned = makeTab("pinned", { pinned: true });
   world.select(pinned);
-  world.gBrowser.addTab("https://example.org/b", {});
+  world.gBrowser.addTab("https://example.org/b", openedFrom(pinned));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1);
   assert.equal(world.openGlanceCalls[0].ownerTab, pinned);
@@ -277,14 +284,14 @@ test("a new tab from a pinned tab becomes a Glance", async () => {
 
 test("a new tab from a normal tab is left alone by default", async () => {
   const world = createWorld();
-  world.gBrowser.addTab("https://example.org/c", {});
+  world.gBrowser.addTab("https://example.org/c", openedFrom(world.gBrowser.selectedTab));
   await tick();
   assert.equal(world.openGlanceCalls.length, 0);
 });
 
 test("Apply to Normal Tabs turns the normal-tab case on", async () => {
   const world = createWorld({ prefs: { "zen-glance-plus.normal": true } });
-  world.gBrowser.addTab("https://example.org/c", {});
+  world.gBrowser.addTab("https://example.org/c", openedFrom(world.gBrowser.selectedTab));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1);
 });
@@ -293,7 +300,7 @@ test("a New Tab page counts as its own kind, by marker and by address", async ()
   const world = createWorld();
   const empty = makeTab("empty", { attrs: { "zen-empty-tab": "" }, url: "about:newtab" });
   world.select(empty);
-  world.gBrowser.addTab("https://example.org/d", {});
+  world.gBrowser.addTab("https://example.org/d", openedFrom(empty));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1);
 
@@ -301,7 +308,7 @@ test("a New Tab page counts as its own kind, by marker and by address", async ()
   world.setOverlay(false);
   const byUrl = makeTab("by-url", { url: "about:newtab" });
   world.select(byUrl);
-  world.gBrowser.addTab("https://example.org/e", {});
+  world.gBrowser.addTab("https://example.org/e", openedFrom(byUrl));
   await tick();
   assert.equal(world.openGlanceCalls.length, 2);
 });
@@ -363,13 +370,15 @@ test("a site row decides for its domain before the kind switches", async () => {
       ]),
     },
   });
-  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
-  world.gBrowser.addTab("https://quiet.example/page", {});
+  const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
+  world.select(essential);
+  world.gBrowser.addTab("https://quiet.example/page", openedFrom(essential));
   await tick();
   assert.equal(world.openGlanceCalls.length, 0, "quiet.example is switched off for the site");
 
-  world.select(makeTab("plain"));
-  world.gBrowser.addTab("https://sub.peek.example/page", {});
+  const plain = makeTab("plain");
+  world.select(plain);
+  world.gBrowser.addTab("https://sub.peek.example/page", openedFrom(plain));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "peek.example glances from a normal tab");
   assert.equal(world.openGlanceCalls[0].data.url, undefined);
@@ -419,22 +428,23 @@ test("a site row narrows itself to the links its patterns match", async () => {
       ]),
     },
   });
-  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
+  world.select(essential);
 
-  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/some_title/", {});
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/some_title/", openedFrom(essential));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "a post opens as a Glance");
 
   world.setOverlay(false);
-  world.gBrowser.addTab("https://www.reddit.com/r/zen/", {});
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/", openedFrom(essential));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "a subreddit listing stays a tab");
 
-  world.gBrowser.addTab("https://www.reddit.com/", {});
+  world.gBrowser.addTab("https://www.reddit.com/", openedFrom(essential));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "the front page stays a tab");
 
-  world.gBrowser.addTab("https://www.reddit.com/settings/profile", {});
+  world.gBrowser.addTab("https://www.reddit.com/settings/profile", openedFrom(essential));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "settings stay a tab");
 });
@@ -461,14 +471,15 @@ test("patterns gate a same-tab redirect the same way", () => {
 
 test("the shipped sites glance a post from an ordinary tab", async () => {
   const world = createWorld();
-  world.select(makeTab("normal", { url: "https://example.org/search" }));
+  const normal = makeTab("normal", { url: "https://example.org/search" });
+  world.select(normal);
 
-  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/title/", {});
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/comments/1abc/title/", openedFrom(normal));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "a reddit post glances with ordinary tabs off");
 
   world.setOverlay(false);
-  world.gBrowser.addTab("https://www.reddit.com/r/zen/", {});
+  world.gBrowser.addTab("https://www.reddit.com/r/zen/", openedFrom(normal));
   await tick();
   assert.equal(world.openGlanceCalls.length, 1, "a subreddit listing still opens as a tab");
 });
@@ -513,12 +524,12 @@ test("a row's Domain switch keeps its site's own links inside the site", async (
   });
   world.select(essential);
 
-  const stays = world.gBrowser.addTab("https://old.reddit.com/r/zen/", {});
+  const stays = world.gBrowser.addTab("https://old.reddit.com/r/zen/", openedFrom(essential));
   await tick();
   assert.equal(stays.getAttribute("zen-glance-tab"), true, "a subdomain is still the site");
 
   world.setOverlay(false);
-  const leaves = world.gBrowser.addTab("https://example.org/a", {});
+  const leaves = world.gBrowser.addTab("https://example.org/a", openedFrom(essential));
   await tick();
   assert.equal(leaves.getAttribute("zen-glance-tab"), null, "leaving the site is refused");
 });
@@ -538,7 +549,7 @@ test("a row's Domain switch is off unless the row turns it on", async () => {
   });
   world.select(essential);
 
-  const leaves = world.gBrowser.addTab("https://example.org/a", {});
+  const leaves = world.gBrowser.addTab("https://example.org/a", openedFrom(essential));
   await tick();
   assert.equal(leaves.getAttribute("zen-glance-tab"), true, "the row alone does not bound it");
 });
@@ -553,12 +564,12 @@ test("Same Domain Only keeps a page in the domain it was opened from", async () 
   });
   world.select(essential);
 
-  const same = world.gBrowser.addTab("https://old.reddit.com/r/zen/comments/1abc/t/", {});
+  const same = world.gBrowser.addTab("https://old.reddit.com/r/zen/comments/1abc/t/", openedFrom(essential));
   await tick();
   assert.equal(same.getAttribute("zen-glance-tab"), true, "a subdomain is the same domain");
 
   world.setOverlay(false);
-  const other = world.gBrowser.addTab("https://example.org/a", {});
+  const other = world.gBrowser.addTab("https://example.org/a", openedFrom(essential));
   await tick();
   assert.equal(other.getAttribute("zen-glance-tab"), null, "another domain is refused");
 });
@@ -569,7 +580,7 @@ test("Same Domain Only leaves a New Tab page free to open anywhere", async () =>
   const newTab = makeTab("newtab", { attrs: { "zen-newtab-page": "" }, url: "about:newtab" });
   world.select(newTab);
 
-  const tab = world.gBrowser.addTab("https://example.org/a", {});
+  const tab = world.gBrowser.addTab("https://example.org/a", openedFrom(newTab));
   await tick();
   assert.equal(tab.getAttribute("zen-glance-tab"), true, "a New Tab page has no domain to stay in");
 });
@@ -607,6 +618,39 @@ test("a link opened from a page is answered with the address Zen kept", () => {
 
   const listing = { spec: "https://www.reddit.com/r/zen/" };
   assert.equal(world.manager.shouldOpenTabInGlance(opened, listing), false);
+});
+
+test("a tab the browser opens for itself is not a Glance", async () => {
+  // The sidebar's plus button, with only a pinned tab left open: the tab has no
+  // opener, and the selected tab used to be borrowed as one.
+  const world = createWorld();
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.google.com/",
+  });
+  world.select(essential);
+
+  const tab = world.gBrowser.addTab("https://www.google.com/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0, "nothing to convert");
+  assert.equal(tab.getAttribute("zen-glance-tab"), null, "the tab stays a tab");
+});
+
+test("with no tabs open at all, the first tab opens as a tab", async () => {
+  const world = createWorld();
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.google.com/",
+  });
+  world.select(essential);
+  world.gBrowser.selectedTab = null;
+
+  const tab = world.gBrowser.addTab("https://www.google.com/", {});
+  await tick();
+  assert.equal(world.openGlanceCalls.length, 0, "an empty workspace opens tabs, not Glances");
+  assert.equal(tab.getAttribute("zen-glance-tab"), null);
 });
 
 test("the browser's own new tab is never turned into a Glance", () => {
@@ -672,9 +716,10 @@ test("nothing is converted while Zen is animating a Glance", async () => {
 
 test("a second matching page promotes the open Glance to a tab first", async () => {
   const world = createWorld();
-  world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));
+  const essential = makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true });
+  world.select(essential);
   world.setOverlay(true);
-  const tab = world.gBrowser.addTab("https://example.org/o", {});
+  const tab = world.gBrowser.addTab("https://example.org/o", openedFrom(essential));
   await tick();
   await tick();
   assert.equal(world.fullyOpenCalls.length, 1);

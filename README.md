@@ -24,7 +24,7 @@
 
 Zen's Glance shows a page over the tab you are on. Stock Zen only raises it for a gesture: a modifier click on a link, a bookmark or search result with the modifier held, or a link that leaves an essential tab. Glance Plus makes the Glance the ordinary way a page opens, decided by the kind of tab it came from and, per site, by the kind of page it is.
 
-Both ways a page can open count: a tab the browser creates, and a link inside a page that opens a tab of its own. A post clicked inside its own site's essential is the second kind, and it glances too. The browser's own new tab is left alone — Ctrl+T, the sidebar's plus button, and anything else that asks for a blank tab produce a normal tab, never a Glance.
+Both ways a page can open count: a tab the browser creates, and a link inside a page that opens a tab of its own. A post clicked inside its own site's essential is the second kind, and it glances too. The browser's own new tab is left alone — Ctrl+T, the sidebar's plus button, a restored session, and the first tab in an empty workspace all produce an ordinary tab, because a tab that no page asked for has no opener to judge.
 
 ## Install
 

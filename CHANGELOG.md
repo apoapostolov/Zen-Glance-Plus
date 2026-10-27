@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.16 — 2026-10-27
+
+- A tab the browser opens for itself is not a Glance any more. With no normal tabs left open, the selected tab is a pinned one, and `parentFor` fell back to the selected tab when a tab carried no opener, so the sidebar's plus button looked like a link opened from that pinned tab. Only a tab that names its opener counts now: `openerBrowser` from Firefox, or the tab Zen passes to its own check. Ctrl+T, the plus button, a restored session, and the first tab in an empty workspace all open as tabs.
+- Found and fixed while testing this: a row's **Domain** switch never fired. It handed a bare host to a lookup that parses URLs, so the row was never found; the test that covered it passed only because a Glance was still open at the time. The lookup now takes a host and both callers share it.
+
 ## 1.0.15 — 2026-10-27
 
 - The sidebar's plus button opened a Glance instead of a new tab. Zen's own rule reads a blank tab opened from a pinned tab as a page on another domain, and the mod asked that rule before it looked at the address, so it agreed. A Glance now needs an actual page first: anything that is not http, https or file is answered with no before Zen is consulted. Ctrl+T was already unaffected, and still is.

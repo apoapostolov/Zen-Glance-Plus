@@ -223,7 +223,7 @@
     if (!source) {
       return false;
     }
-    const row = domainRuleFor(source);
+    const row = ruleForHost(source);
     if (!row?.domain) {
       return false;
     }
@@ -410,8 +410,7 @@
   }
 
   /** The first row whose site is this host or a parent of it. */
-  function domainRuleFor(urlString, rules) {
-    const host = hostOf(urlString);
+  function ruleForHost(host, rules) {
     if (!host) {
       return null;
     }
@@ -421,6 +420,10 @@
       }
     }
     return null;
+  }
+
+  function domainRuleFor(urlString, rules) {
+    return ruleForHost(hostOf(urlString), rules);
   }
 
   /** The path and query of an address, which is what a link pattern matches. */
@@ -563,17 +566,20 @@
    * selected, so the current selection is still the page the user was on;
    * `lastParent` only covers a call made after the selection already moved.
    */
+  /**
+   * The tab that asked for this one, and only that tab. A tab the browser opens
+   * for itself — Ctrl+T, the sidebar's plus, a restored session — carries no
+   * opener, and guessing the selected tab for it made the browser's own new tab
+   * look like it had been opened from an essential.
+   */
   function parentFor(params) {
     if (params?.ownerTab) {
       return params.ownerTab;
     }
     if (params?.openerBrowser) {
-      const opened = gBrowser.getTabForBrowser?.(params.openerBrowser);
-      if (opened) {
-        return opened;
-      }
+      return gBrowser.getTabForBrowser?.(params.openerBrowser) ?? null;
     }
-    return gBrowser.selectedTab ?? state.lastParent;
+    return null;
   }
 
   /**
