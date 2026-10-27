@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 — 2026-10-27
+
+- The script announces itself in the Browser Console and exposes `window.__zenGlancePlus.status()`, which reports whether it started, whether `gBrowser.addTab` is wrapped, whether the Glance manager is present, how many sites are configured and what each switch is set to. A script that never loads and a script that loads and declines to act now look different from the outside.
+
 ## 1.0.0 — 2026-10-27
 
 First public release. Glance Plus opens a new tab as a Glance, and decides which pages deserve one.

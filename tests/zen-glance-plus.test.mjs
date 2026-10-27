@@ -482,6 +482,20 @@ test("a site row can still switch a shipped site off", async () => {
   assert.equal(world.openGlanceCalls.length, 0);
 });
 
+test("status reports what the mod is doing", () => {
+  const world = createWorld();
+  const s = world.api.status();
+  assert.equal(s.started, true);
+  assert.equal(s.addTabWrapped, true, "addTab should be wrapped after start");
+  assert.equal(s.glanceManager, true);
+  assert.equal(s.glanceEnabled, true);
+  assert.equal(typeof s.sites, "number");
+  assert.ok(s.sites >= 1, "shipped sites should be counted");
+  assert.equal(s.switches.essential, true);
+  assert.equal(s.switches.normal, false);
+  assert.equal(world.api.LOG, "[zen-glance-plus]");
+});
+
 test("nothing is converted while Zen is animating a Glance", async () => {
   const world = createWorld();
   world.select(makeTab("essential", { attrs: { "zen-essential": "" }, pinned: true }));

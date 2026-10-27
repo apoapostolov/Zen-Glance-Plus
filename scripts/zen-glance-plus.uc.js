@@ -24,6 +24,10 @@
   "use strict";
 
   const PREF_ROOT = "zen-glance-plus.";
+  const LOG = "[zen-glance-plus]";
+  // Printed before anything else so a probe can tell a script that never
+  // loaded from one that loaded and then declined to start.
+  console.info(LOG, "script loaded in", String(window.location?.href || "?"));
   /**
    * Sites that ship configured. Only used when the domains pref has never
    * been written, so a list emptied by hand stays empty.
@@ -1111,7 +1115,11 @@
   }
 
   function start() {
-    if (state.started || !window.gBrowser || typeof window.gBrowser.addTab !== "function") {
+    if (state.started) {
+      return true;
+    }
+    if (!window.gBrowser || typeof window.gBrowser.addTab !== "function") {
+      console.warn(LOG, "gBrowser.addTab is not available yet; retrying on load");
       return false;
     }
     state.started = true;
@@ -1132,7 +1140,32 @@
       },
       { once: true }
     );
+    console.info(LOG, "started with", readDomains().length, "sites configured");
     return true;
+  }
+
+  /** What the mod thinks it is doing, for the Browser Toolbox. */
+  function status() {
+    let sites = 0;
+    try {
+      sites = readDomains().length;
+    } catch (e) {
+      sites = -1;
+    }
+    return {
+      started: Boolean(state.started),
+      addTabWrapped: Boolean(state.originalAddTab),
+      glanceManager: Boolean(window.gZenGlanceManager),
+      glanceEnabled: readPrefBool("zen.glance.enabled", true),
+      sites,
+      switches: {
+        essential: setting("essential"),
+        pinned: setting("pinned"),
+        normal: setting("normal"),
+        newtab: setting("newtab"),
+        redirect: setting("redirect"),
+      },
+    };
   }
 
   function stop() {
@@ -1161,8 +1194,10 @@
   }
 
   const api = {
+    LOG,
     start,
     stop,
+    status,
     sourceKind,
     planFor,
     redirectPlan,
@@ -1198,12 +1233,13 @@
 
   // Reachable from the Browser Toolbox, and from the test harness.
   window.__zenGlancePlus = api;
+  console.info(LOG, "script loaded; __zenGlancePlus is set");
   try {
     if (!start()) {
       // The window is still building its tab browser; try again on load.
       window.addEventListener("load", () => start(), { once: true });
     }
   } catch (e) {
-    console.error("[zen-glance-plus] could not start", e);
+    console.error(LOG, "could not start", e);
   }
 })();
