@@ -185,7 +185,17 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
   const sheetCalls = [];
   const intervals = [];
 
+  const observers = [];
+  class FakeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
+    observe() {}
+  }
+
   const windowObject = {
+    MutationObserver: FakeObserver,
     innerWidth: 1200,
     innerHeight: 800,
     document,
@@ -259,6 +269,11 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
     document,
     stored,
     withAnchor,
+    fireMutations: () => {
+      for (const observer of observers) {
+        observer.callback([]);
+      }
+    },
     tickIntervals: (times = 1) => {
       for (let i = 0; i < times; i += 1) {
         for (const handler of intervals) {
@@ -296,6 +311,23 @@ test("the table lands when the settings page builds its place late", () => {
   assert.ok(
     world.document.getElementById("zen-glance-plus-domains-table"),
     "the timer places it once the page has a place for it"
+  );
+});
+
+test("the table comes back when the settings page rebuilds its content", () => {
+  // Sine rebuilds the Configure dialog's content each time it opens, and that
+  // rebuild removes the table with everything else.
+  const world = createWorld({ fresh: true });
+  const table = world.withAnchor();
+  assert.ok(table, "the table is placed");
+
+  table.parentNode.removeChild(table);
+  assert.equal(world.document.getElementById("zen-glance-plus-domains-table"), null);
+
+  world.fireMutations();
+  assert.ok(
+    world.document.getElementById("zen-glance-plus-domains-table"),
+    "the observer puts it back"
   );
 });
 

@@ -79,6 +79,8 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
   };
 
   const normalTab = makeTab("normal");
+  const dialogWindowCalls = [];
+  let openDialogResult = null;
   const world = {
     normalTab,
     tabs: [normalTab],
@@ -89,6 +91,105 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     openTrustedLinkInCalls,
     timers,
   };
+
+  const bookmarkCalls = [];
+  const bookmarkWidgets = new Map();
+  const dialogHeader = { attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
+  const dialogStyle = { props: {}, setProperty(name, value, priority) { this.props[name] = { value, priority }; } };
+  const dialogIconStyle = { props: {}, setProperty(name, value, priority) { this.props[name] = { value, priority }; } };
+  const dialogIcon = { className: "titleIcon", style: dialogIconStyle };
+  const cellStyle = () => ({ props: {}, setProperty(name, value, priority) { this.props[name] = { value, priority }; } });
+  const dialogDropdownStyle = cellStyle();
+  const dialogTriggerStyle = cellStyle();
+  const dialogContent = {
+    children: [],
+    insertBefore(element, reference) {
+      const index = this.children.indexOf(reference);
+      if (index < 0) {
+        this.children.push(element);
+      } else {
+        this.children.splice(index, 0, element);
+      }
+      element.parentElement = this;
+      return element;
+    },
+  };
+  const menuStyle = cellStyle();
+  const menuExpanderStyle = cellStyle();
+  const menuList = {
+    tagName: "menulist",
+    style: menuStyle,
+    parentElement: null,
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+  };
+  const locationLabelStyle = cellStyle();
+  const menuRow = {
+    tagName: "hbox",
+    style: cellStyle(),
+    children: [menuList, { tagName: "button", style: menuExpanderStyle }],
+    parentElement: null,
+  };
+  menuList.parentElement = menuRow;
+  menuList.closest = selector =>
+    selector === ".zenEditBMPanel_fieldContainer" ? locationCell : null;
+  const locationCell = {
+    className: "zenEditBMPanel_fieldContainer",
+    style: cellStyle(),
+    parentElement: dialogContent,
+    children: [
+      { tagName: "label", style: locationLabelStyle, textContent: "Location" },
+      menuRow,
+    ],
+  };
+  menuRow.parentElement = locationCell;
+  const spacesCell = {
+    className: "zenEditBMPanel_fieldContainer",
+    style: cellStyle(),
+    parentElement: dialogContent,
+    children: [{ tagName: "label", style: cellStyle() }, { tagName: "div", style: cellStyle() }],
+  };
+  dialogContent.children.push(locationCell, spacesCell);
+  const dialogRow = {
+    id: "",
+    className: "",
+    style: cellStyle(),
+    children: [],
+    appendChild(element) {
+      element.parentElement = this;
+      this.children.push(element);
+      return element;
+    },
+  };
+  const closestTo = element => selector =>
+    selector === ".zenEditBMPanel_fieldContainer" ? element : null;
+  const dialogDocument = {
+    documentElement: { id: "bookmarkproperties", style: dialogStyle },
+    location: { href: "chrome://browser/content/places/bookmarkProperties.xhtml" },
+    getElementById: id => {
+      if (id === "titleContainer") {
+        return dialogHeader;
+      }
+      if (id === "editBMPanel_folderMenuList") {
+        return menuList;
+      }
+      if (id === "editBMPanel_workspaceDropdown") {
+        return { closest: closestTo(spacesCell), style: dialogDropdownStyle };
+      }
+      if (id === "editBMPanel_workspaceSummary") {
+        return { style: dialogTriggerStyle };
+      }
+      return null;
+    },
+    createElementNS: () => dialogRow,
+    querySelector: selector => (selector === ".titleIcon" ? dialogIcon : null),
+  };
+  const windowOpenCalls = [];
+  let windowOpenResult = { closed: false };
+  let openFailure = null;
+  let installedAddons = [];
 
   const browserOf = tab => {
     let browser = world.browsers.get(tab);
@@ -159,6 +260,10 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     fullyOpenGlance() {
       fullyOpenCalls.push(true);
       overlayOpen = false;
+      for (const tab of world.tabs) {
+        tab.removeAttribute("glance-id");
+        tab.removeAttribute("zen-glance-tab");
+      }
       return Promise.resolve();
     },
     getTabOrGlanceParent(tab) {
@@ -166,9 +271,13 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     },
   };
 
+  let overlayBrowser = null;
+  const overlayHost = {
+    querySelector: selector => (selector === "browser" ? overlayBrowser : null),
+  };
   const document = {
     querySelector: selector =>
-      selector.includes("zen-glance-overlay") && overlayOpen ? { fake: true } : null,
+      selector.includes("zen-glance-overlay") && overlayOpen ? overlayHost : null,
   };
 
   const windowListeners = new Map();
@@ -191,6 +300,13 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     },
     clearTimeout: () => {},
     Services: {
+      // Bound to the sandbox's own window further down, since that is the
+      // window being described.
+      wm: {
+        getMostRecentWindow: () => null,
+        getEnumerator: () => ({ hasMoreElements: () => false }),
+        getXULWindowEnumerator: () => ({ hasMoreElements: () => false }),
+      },
       prefs: {
         getBoolPref: (name, fallback = false) =>
           prefMap.has(name) ? Boolean(prefMap.get(name)) : fallback,
@@ -203,6 +319,15 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
       scriptSecurityManager: {
         getSystemPrincipal: () => ({ isSystemPrincipal: true }),
       },
+      ww: {
+        openWindow: (parent, url, name, features, args) => {
+          windowOpenCalls.push({ parent, url, name, features, args });
+          if (openFailure === "watcher") {
+            throw Object.assign(new Error("no"), { name: "NS_ERROR_FAILURE" });
+          }
+          return windowOpenResult;
+        },
+      },
     },
     gBrowser,
     document,
@@ -212,6 +337,27 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
   sandbox.window = {
     gBrowser,
     gZenGlanceManager: manager,
+    PlacesCommandHook: {
+      bookmarkLink: (url, title) => {
+        bookmarkCalls.push({ url, title });
+        return Promise.resolve("guid");
+      },
+    },
+    CustomizableUI: {
+      getWidget: id => ({
+        forWindow: () => ({ node: bookmarkWidgets.get(id) ?? null }),
+      }),
+    },
+    AddonManager: {
+      getAddonsByTypes: async () => installedAddons,
+    },
+    gDialogBox: {
+      dialog: { frameContentWindow: { document: dialogDocument } },
+    },
+    screenX: 0,
+    screenY: 0,
+    outerWidth: 1000,
+    outerHeight: 800,
     innerWidth: 1200,
     innerHeight: 800,
     addEventListener: (type, fn) => {
@@ -221,6 +367,10 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
       if (windowListeners.get(type) === fn) {
         windowListeners.delete(type);
       }
+    },
+    openDialog(url, name, features, ...rest) {
+      dialogWindowCalls.push({ url, name, features, rest });
+      return openDialogResult;
     },
     openLinkIn(url, where, params) {
       openLinkInCalls.push({ url, where, params });
@@ -232,6 +382,8 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
     },
   };
   world.openLinkInOriginal = sandbox.window.openLinkIn;
+  // Bound after the sandbox exists, since it is the window being described.
+  sandbox.Services.wm.getMostRecentWindow = () => sandbox.window;
 
   const context = vm.createContext(sandbox);
   vm.runInContext(source, context, { filename: scriptPath });
@@ -240,8 +392,48 @@ function createWorld({ prefs = {}, conflict = "promote" } = {}) {
   world.window = sandbox.window;
   world.manager = manager;
   world.setPref = (name, value) => prefMap.set(name, value);
+  world.bookmarkCalls = bookmarkCalls;
+  world.dialogHeader = dialogHeader;
+  world.dialogStyle = dialogStyle;
+  world.dialogIconStyle = dialogIconStyle;
+  world.dialogDropdownStyle = dialogDropdownStyle;
+  world.menuStyle = menuStyle;
+  world.menuList = menuList;
+  world.locationLabelStyle = locationLabelStyle;
+  world.menuExpanderStyle = menuExpanderStyle;
+  world.dialogTriggerStyle = dialogTriggerStyle;
+  world.dialogRow = dialogRow;
+  world.dialogContent = dialogContent;
+  world.windowOpenCalls = windowOpenCalls;
+  world.dialogWindowCalls = dialogWindowCalls;
+  world.setOpenDialogResult = value => {
+    openDialogResult = value;
+  };
+  world.setWindowOpenResult = value => {
+    windowOpenResult = value;
+  };
+  world.setOpenFailure = value => {
+    openFailure = value;
+  };
+  world.setAddons = list => {
+    installedAddons = list;
+  };
+  world.setRaindropWidget = (id, node) => {
+    bookmarkWidgets.set(id, node);
+  };
+  world.setGlanceBrowser = browser => {
+    overlayBrowser = browser;
+  };
   world.setOverlay = value => {
     overlayOpen = value;
+    if (!value) {
+      // Zen unmarks the tab when the Glance is closed or promoted, so a closed
+      // overlay never leaves a tab that still looks like one.
+      for (const tab of world.tabs) {
+        tab.removeAttribute("glance-id");
+        tab.removeAttribute("zen-glance-tab");
+      }
+    }
   };
   world.setAnimating = value => {
     manager._animating = value;
@@ -626,6 +818,116 @@ test("a link opened from a page is answered with the address Zen kept", () => {
   assert.equal(world.manager.shouldOpenTabInGlance(opened, listing), false);
 });
 
+test("a Glance never opens inside a Glance", () => {
+  const world = createWorld();
+  const glanceTab = makeTab("glance", { url: "https://example.org/inside" });
+  glanceTab.setAttribute("glance-id", "g1");
+  glanceTab.setAttribute("zen-glance-tab", true);
+
+  assert.equal(
+    world.api.planFor("https://www.reddit.com/r/zen/comments/1abc/t/", { ownerTab: glanceTab }),
+    null,
+    "no second Glance, whoever asks for it"
+  );
+});
+
+/** A Glance as Zen builds it: the Glance's tab nested in the tab it sits over. */
+function makeOpenGlance(world, { baseAttrs = { "zen-essential": "" }, basePinned = true } = {}) {
+  const base = makeTab("base", { attrs: baseAttrs, pinned: basePinned, url: "https://example.org/start" });
+  // Zen marks both tabs: the one it shows and the one it sits over. That is
+  // what made a tab a bad handle for "the page the Glance is showing".
+  base.setAttribute("glance-id", "g1");
+  const glanceTab = makeTab("glance", { url: "https://example.org/in-glance" });
+  glanceTab.setAttribute("glance-id", "g1");
+  glanceTab.setAttribute("zen-glance-tab", true);
+  glanceTab.parentElement = { closest: selector => (selector === "tab" ? base : null) };
+  world.tabs.push(base, glanceTab);
+  world.select(glanceTab);
+  world.setOverlay(true);
+
+  const loaded = [];
+  const baseLoaded = [];
+  world.setGlanceBrowser({
+    fixupAndLoadURIString: (url, params) => loaded.push({ url, params }),
+  });
+  // The tab underneath can be navigated too, which is exactly the mistake to
+  // catch: it is the handle that looked right and was not.
+  base.linkedBrowser.fixupAndLoadURIString = url => baseLoaded.push(url);
+  return { base, glanceTab, loaded, baseLoaded };
+}
+
+test("a link that would glance inside a Glance stays in that Glance", () => {
+  const world = createWorld();
+  const { base, glanceTab, loaded, baseLoaded } = makeOpenGlance(world);
+  const before = world.tabs.length;
+
+  const returned = world.gBrowser.addTab("https://example.org/next", {
+    openerBrowser: "whatever",
+    ownerTab: base,
+  });
+
+  assert.equal(world.tabs.length, before, "no tab is created for it");
+  assert.equal(returned, glanceTab, "the Glance's own tab is handed back");
+  assert.deepEqual(
+    loaded.map(entry => entry.url),
+    ["https://example.org/next"],
+    "the address loads in the overlay, not in the tab underneath"
+  );
+  assert.equal(
+    base.linkedBrowser.currentURI.spec,
+    "https://example.org/start",
+    "the tab underneath is untouched"
+  );
+  assert.deepEqual(baseLoaded, [], "and it is never navigated");
+  assert.ok(loaded[0].params?.triggeringPrincipal, "with a principal to load by");
+});
+
+test("a new tab asked for inside a Glance is a new tab", () => {
+  const world = createWorld();
+  // A Glance over an ordinary tab, which glances nothing by itself.
+  const { base, loaded, baseLoaded } = makeOpenGlance(world, { baseAttrs: {}, basePinned: false });
+
+  const before = world.tabs.length;
+  const tab = world.gBrowser.addTab("https://example.org/other", { ownerTab: base });
+
+  assert.equal(world.tabs.length, before + 1, "the tab is created");
+  assert.notEqual(tab, base, "and it is not the tab underneath");
+  assert.deepEqual(loaded, [], "the Glance is left where it is");
+  assert.deepEqual(baseLoaded, [], "and the tab underneath is not loaded either");
+  assert.equal(base.linkedBrowser.currentURI.spec, "https://example.org/start");
+});
+
+test("a page that opens its own tab from inside a Glance lands there too", () => {
+  const world = createWorld();
+  const { glanceTab, loaded } = makeOpenGlance(world);
+
+  const opened = makeTab("opened", { url: "about:blank" });
+  opened.owner = glanceTab;
+  world.tabs.push(opened);
+
+  const answer = world.manager.shouldOpenTabInGlance(opened, {
+    spec: "https://example.org/from-glance",
+  });
+
+  assert.equal(answer, false, "it does not become a Glance");
+  assert.deepEqual(loaded.map(entry => entry.url), ["https://example.org/from-glance"], "it loads in the open Glance");
+});
+
+test("a Glance is still seen when its tab is not the selected one", () => {
+  const world = createWorld();
+  const glanceTab = makeTab("glance", { url: "https://example.org/start" });
+  glanceTab.setAttribute("glance-id", "g1");
+  world.tabs.push(glanceTab);
+  // Peeking leaves another tab selected; the marker is what matters.
+  world.select(makeTab("plain"));
+
+  const opened = world.gBrowser.addTab("https://example.org/x", {
+    ownerTab: world.tabs[0],
+  });
+  assert.equal(world.openGlanceCalls.length, 0, "no second Glance while one is open");
+  assert.ok(opened, "the tab exists");
+});
+
 test("the glance button strip gets one copy button, once", () => {
   const world = createWorld();
   const made = [];
@@ -921,7 +1223,20 @@ test("the shipped preferences match the documented defaults", () => {
   assert.equal(first.id, "zen-glance-plus-apply-to", "the first heading needs the id the sheet hides");
 
   const headings = prefs.filter(entry => entry.type === "separator").map(entry => entry.label);
-  assert.deepEqual(headings, ["**Apply to**", "**Glance applies to**", "**Sites**"]);
+  assert.deepEqual(headings, ["**Apply to**", "**Glance applies to**", "**Glance bar**", "**Sites**"]);
+
+  const dropdowns = prefs.filter(entry => entry.type === "dropdown");
+  assert.equal(dropdowns.length, 1, "the bookmark button has one setting");
+  const bookmark = dropdowns[0];
+  assert.equal(bookmark.property, "zen-glance-plus.bookmark");
+  assert.equal(bookmark.label, "Bookmark in Glance Bar (experimental)");
+  assert.equal(bookmark.defaultValue, "off", "Disabled is the default");
+  assert.deepEqual(
+    bookmark.options.map(option => [option.label, option.value]),
+    [["Disabled", "off"], ["Bookmarks", "bookmarks"], ["Raindrop", "raindrop"]]
+  );
+  // Sine adds a "None" item above a dropdown unless the mod refuses one.
+  assert.equal(bookmark.placeholder, false, "the three positions are the whole list");
 
   function labelFor(key) {
     return {
@@ -938,6 +1253,533 @@ test("the shipped preferences match the documented defaults", () => {
 test("the script ships no inline stylesheet", () => {
   assert.equal(/createElement\(\s*["']style["']\s*\)/.test(source), false);
   assert.equal(source.includes("<style"), false);
+});
+
+/* ------------------------------------------------- bookmark in the bar */
+
+function fakeEl(tag, className = "") {
+  const el = {
+    tagName: tag,
+    className,
+    children: [],
+    appendChild(child) {
+      child.parentElement = el;
+      el.children.push(child);
+      return child;
+    },
+    remove() {
+      const parent = el.parentElement;
+      if (parent) {
+        const index = parent.children.indexOf(el);
+        if (index >= 0) {
+          parent.children.splice(index, 1);
+        }
+        el.parentElement = null;
+      }
+    },
+    querySelectorAll(selector) {
+      const matches = [];
+      const walk = node => {
+        for (const child of node.children ?? []) {
+          const wanted = selector.replace(/^[#.]/, "");
+          const isId = selector.startsWith("#");
+          const hit = isId
+            ? child.id === wanted
+            : String(child.className ?? "").split(" ").includes(wanted);
+          if (hit) {
+            matches.push(child);
+          }
+          walk(child);
+        }
+      };
+      walk(el);
+      return matches;
+    },
+    querySelector(selector) {
+      const wanted = selector.replace(/^[#.]/, "");
+      const wantedIsId = selector.startsWith("#");
+      const match = node => (wantedIsId ? node.id === wanted : String(node.className ?? "").split(" ").includes(wanted));
+      for (const child of el.children) {
+        if (match(child)) {
+          return child;
+        }
+        const deeper = child.querySelector?.(selector);
+        if (deeper) {
+          return deeper;
+        }
+      }
+      return null;
+    },
+    style: {
+      props: {},
+      setProperty(name, value) {
+        this.props[name] = value;
+      },
+    },
+    attributes: {},
+    parentElement: null,
+    setAttribute(name, value) {
+      el.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return el.attributes[name];
+    },
+    remove() {
+      const parent = el.parentElement;
+      if (!parent) {
+        return;
+      }
+      const index = parent.children.indexOf(el);
+      if (index >= 0) {
+        parent.children.splice(index, 1);
+      }
+      el.parentElement = null;
+    },
+    closest(selector) {
+      const wanted = selector.replace(/^\./, "");
+      let node = el;
+      while (node) {
+        if (String(node.className ?? "").split(" ").includes(wanted)) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    },
+  };
+  return el;
+}
+
+function fakeStrip(browser) {
+  const children = [];
+  const container = {
+    children,
+    ownerDocument: {
+      createXULElement: tag => fakeEl(tag),
+      createElement: tag => fakeEl(tag),
+      createElementNS: (namespace, tag) => fakeEl(tag),
+      getElementById: id => {
+        for (const child of children) {
+          if (child.id === id) {
+            return child;
+          }
+          const deeper = child.querySelector?.(`#${id}`);
+          if (deeper) {
+            return deeper;
+          }
+        }
+        return null;
+      },
+    },
+    querySelector(selector) {
+      const wanted = selector.replace(/^\./, "");
+      return children.find(el => String(el.className).split(" ").includes(wanted)) ?? null;
+    },
+    querySelectorAll(selector) {
+      const wanted = selector.replace(/^\./, "");
+      const matches = [];
+      const walk = node => {
+        for (const child of node.children ?? []) {
+          if (String(child.className).split(" ").includes(wanted)) {
+            matches.push(child);
+          }
+          walk(child);
+        }
+      };
+      walk(container);
+      return matches;
+    },
+    appendChild(el) {
+      el.parentElement = container;
+      children.push(el);
+      return el;
+    },
+    insertBefore(el, reference) {
+      el.parentElement = container;
+      const index = reference ? children.indexOf(reference) : -1;
+      if (index < 0) {
+        children.push(el);
+      } else {
+        children.splice(index, 0, el);
+      }
+      return el;
+    },
+  };
+  // The page the Glance is showing sits in a container above the strip, which
+  // is how the copy button finds it too.
+  const host = {
+    className: "browserSidebarContainer",
+    parentElement: null,
+    querySelector: selector => (selector === "browser" ? browser : null),
+  };
+  container.parentElement = host;
+  return container;
+}
+
+const makeBrowser = (url, title = "A page") => ({
+  currentURI: { spec: url },
+  contentTitle: title,
+});
+
+const clickOn = element => ({
+  target: element,
+  prevented: false,
+  stopped: false,
+  preventDefault() {
+    this.prevented = true;
+  },
+  stopPropagation() {
+    this.stopped = true;
+  },
+});
+
+test("no save button is drawn unless the setting asks for one", () => {
+  const world = createWorld();
+  const strip = fakeStrip(makeBrowser("https://example.org/page"));
+
+  assert.equal(world.api.addGlanceBookmarkButton(strip), null, "Disabled is the default");
+  assert.equal(strip.children.length, 0);
+
+  world.setPref("zen-glance-plus.bookmark", "bookmarks");
+  const button = world.api.addGlanceBookmarkButton(strip);
+  assert.ok(button, "Bookmarks draws one");
+  assert.equal(button.getAttribute("aria-label"), "Bookmark this page");
+  assert.ok(
+    button.style.props["list-style-image"].includes("zen-icons/bookmark-hollow.svg"),
+    "with Zen's own bookmark icon"
+  );
+  assert.equal(
+    button.style.props["-moz-context-properties"],
+    "fill, fill-opacity",
+    "and the properties that let a skin colour it"
+  );
+
+  world.setPref("zen-glance-plus.bookmark", "off");
+  assert.equal(world.api.addGlanceBookmarkButton(strip), null, "switching it off takes it away");
+  assert.equal(strip.children.length, 0);
+});
+
+test("the save button sits to the left of copy", () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "bookmarks");
+  const strip = fakeStrip(makeBrowser("https://example.org/page"));
+  const copy = fakeEl("toolbarbutton", "zgp-glance-copy");
+  strip.appendChild(copy);
+
+  const button = world.api.addGlanceBookmarkButton(strip);
+  assert.ok(button);
+  assert.equal(strip.children[0], button, "it is first");
+  assert.equal(strip.children[1], copy, "and the copy button follows it");
+});
+
+test("clicking it opens the add bookmark dialog for the Glance's page", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "bookmarks");
+  const strip = fakeStrip(makeBrowser("https://example.org/read", "Read this"));
+  const button = world.api.addGlanceBookmarkButton(strip);
+
+  const event = clickOn(button);
+  world.api.onGlanceBookmarkClick(event);
+  await tick();
+
+  assert.equal(event.prevented, true, "the strip's own handling is stopped");
+  assert.deepEqual(
+    world.bookmarkCalls.map(call => [call.url, call.title]),
+    [["https://example.org/read", "Read this"]],
+    "the dialog is asked for this address, not for the selected tab"
+  );
+});
+
+test("the bookmark dialog's header icon is cleared", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "bookmarks");
+  const strip = fakeStrip(makeBrowser("https://example.org/read", "Read this"));
+  const button = world.api.addGlanceBookmarkButton(strip);
+
+  world.api.onGlanceBookmarkClick(clickOn(button));
+  world.runTimers();
+  await tick();
+
+  assert.equal(
+    world.dialogStyle.props["--icon-url"]?.value,
+    "none",
+    "the title slot stops painting the icon"
+  );
+  assert.equal(
+    world.dialogStyle.props["--icon-url"]?.priority,
+    "important",
+    "over the value the dialog sets for itself"
+  );
+  assert.equal(world.dialogHeader.attributes.noicon, "true", "and the container hides it outright");
+  assert.equal(
+    world.dialogIconStyle.props.display?.value,
+    "none",
+    "the icon element itself is hidden, whatever the dialog thinks it reads"
+  );
+  assert.equal(world.dialogIconStyle.props.display?.priority, "important");
+});
+
+test("Location and Spaces are put on one row", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "bookmarks");
+  const strip = fakeStrip(makeBrowser("https://example.org/read", "Read this"));
+
+  world.api.onGlanceBookmarkClick(clickOn(world.api.addGlanceBookmarkButton(strip)));
+  world.runTimers();
+  await tick();
+
+  const row = world.dialogRow;
+  assert.ok(row, "a row is made for the pair");
+  assert.equal(row.children.length, 2, "with both fields inside it");
+  assert.equal(
+    row.style.props.display?.value,
+    "flex",
+    "laid out as a row, because the dialog's grid gives each field its own line"
+  );
+  assert.equal(row.style.props.gap?.value, "0", "with no space between them");
+  assert.equal(row.style.props["flex-wrap"]?.value, "nowrap", "on one line, never two");
+  assert.equal(world.dialogContent.children.includes(row), true, "and it takes their place");
+  assert.equal(
+    world.dialogDropdownStyle.props.width?.value,
+    "auto",
+    "the Spaces dropdown stops asking for the whole cell"
+  );
+  assert.equal(
+    world.dialogTriggerStyle.props["text-overflow"]?.value,
+    "ellipsis",
+    "and its name shortens instead of pushing the line wider"
+  );
+  assert.equal(
+    world.dialogTriggerStyle.props["margin-inline-end"]?.value,
+    "0",
+    "and nothing holds space on its right"
+  );
+  assert.equal(world.menuStyle.props.width?.value, "auto");
+  assert.equal(
+    world.menuStyle.props["padding-inline-start"]?.value,
+    "0",
+    "and starts exactly where the word it replaced started"
+  );
+  assert.equal(world.menuStyle.props["margin-inline-start"]?.value, "0");
+  assert.equal(
+    world.menuStyle.props["margin-inline-end"]?.value,
+    "0",
+    "with no space held on its right either"
+  );
+  assert.equal(
+    world.menuStyle.props.flex?.value,
+    "0 1 auto",
+    "the folder menu hugs its own text instead of stretching and sitting empty"
+  );
+  assert.equal(
+    world.locationLabelStyle.props.display?.value,
+    "none",
+    "the word Location gives its place to the folder chip"
+  );
+  assert.equal(
+    world.menuList.attributes["aria-label"],
+    "Location",
+    "and the menu keeps the name the label gave it"
+  );
+  assert.equal(
+    world.menuExpanderStyle.props.flex?.value,
+    "0 0 auto",
+    "while the expander beside it keeps its own size"
+  );
+  const [location, spaces] = row.children;
+  assert.equal(location.style.props.flex?.value, "0 1 auto", "Location is only as wide as it needs");
+  assert.equal(spaces.style.props.flex?.value, "1 1 40%", "and Spaces takes the rest of the line");
+  for (const cell of row.children) {
+    assert.equal(cell.style.props["min-width"]?.value, "0", "either may shrink");
+    assert.equal(cell.style.props["flex-wrap"]?.value, "nowrap", "and neither wraps inside");
+  }
+});
+
+test("Raindrop mode shows the cloud from beside the address bar", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setAddons([
+    {
+      id: "raindrop@example",
+      name: "Raindrop.io",
+      isActive: true,
+      iconURL: "moz-extension://uuid-1/assets/icon_32.png",
+    },
+  ]);
+  await world.api.findRaindrop();
+
+  const strip = fakeStrip(makeBrowser("https://example.org/read"));
+  const button = world.api.addGlanceBookmarkButton(strip);
+  assert.ok(button, "the button appears");
+  assert.equal(button.style.props["list-style-image"], "none", "no picture is loaded");
+  const glyph = button.children[0];
+  assert.ok(glyph, "the cloud is drawn as a child of the button");
+  assert.ok(
+    glyph.style.props["mask-image"].includes("data:image/svg+xml"),
+    "the shape is the baked cloud"
+  );
+  assert.equal(
+    glyph.style.props["background-color"],
+    "currentColor",
+    "and the ink is the button's own colour"
+  );
+  assert.equal(
+    button.style.props["background-color"],
+    undefined,
+    "the button keeps Zen's chip, which an earlier mask painted over"
+  );
+  assert.equal(button.getAttribute("aria-label"), "Save to Raindrop.io");
+
+  const event = clickOn(button);
+  world.api.onGlanceBookmarkClick(event);
+  await tick();
+
+  assert.equal(event.prevented, true, "the strip's own handling is stopped");
+  assert.equal(world.windowOpenCalls.length, 1, "Raindrop's dialog window is asked for");
+  const opened = world.windowOpenCalls[0];
+  assert.equal(
+    opened.url,
+    "moz-extension://uuid-1/index.html#/add?link=https%3A%2F%2Fexample.org%2Fread",
+    "at the address Raindrop itself opens for a page"
+  );
+  assert.ok(opened.features.includes("popup"), "as a popup");
+  assert.ok(opened.features.includes("width=420") && opened.features.includes("height=600"),
+    "at Raindrop's own size");
+  assert.ok(opened.features.includes("left=290") && opened.features.includes("top=100"),
+    "centred on the window it came from");
+});
+
+test("the dialog is a popup window centred on the window that drew the page", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setPref("extensions.webextensions.uuids", JSON.stringify({ "raindrop@example": "uuid-9" }));
+  world.setAddons([{ id: "raindrop@example", name: "Raindrop.io", isActive: true }]);
+  await world.api.findRaindrop();
+
+  // The element's own window, which is the only real one a sandbox can reach.
+  const drawnIn = { screenX: 500, screenY: 300, outerWidth: 800, outerHeight: 700 };
+  const browser = makeBrowser("https://example.org/read");
+  browser.ownerDocument = { defaultView: drawnIn };
+  const strip = fakeStrip(browser);
+
+  world.api.onGlanceBookmarkClick(clickOn(world.api.addGlanceBookmarkButton(strip)));
+
+  const call = world.windowOpenCalls[0];
+  assert.equal(call.parent, drawnIn, "the window watcher is given the real window");
+  assert.ok(call.features.startsWith("popup,"), "Raindrop's own shape: a browser popup window");
+  assert.ok(call.features.includes("width=420") && call.features.includes("height=600"));
+  assert.ok(
+    call.features.includes("left=690") && call.features.includes("top=350"),
+    "centred on that window"
+  );
+});
+
+test("Raindrop's address comes from the browser, not from its icon", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setPref("extensions.webextensions.uuids", JSON.stringify({ "raindrop@example": "uuid-9" }));
+  // No iconURL, which is what the real add-on gave: an empty base and a silent
+  // "no Raindrop to save it with".
+  world.setAddons([{ id: "raindrop@example", name: "Raindrop.io", isActive: true }]);
+  await world.api.findRaindrop();
+
+  const strip = fakeStrip(makeBrowser("https://example.org/read"));
+  const button = world.api.addGlanceBookmarkButton(strip);
+  world.api.onGlanceBookmarkClick(clickOn(button));
+
+  assert.equal(world.windowOpenCalls.length, 1, "a window is asked for");
+  assert.equal(
+    world.windowOpenCalls[0].url,
+    "moz-extension://uuid-9/index.html#/add?link=https%3A%2F%2Fexample.org%2Fread",
+    "at the address the browser keeps for that extension"
+  );
+});
+
+test("Raindrop's page opens as a centred dialog window, not a tab", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setPref("extensions.webextensions.uuids", JSON.stringify({ "raindrop@example": "uuid-9" }));
+  world.setAddons([{ id: "raindrop@example", name: "Raindrop.io", isActive: true }]);
+  await world.api.findRaindrop();
+  const dialogWindow = { focus() {} };
+  world.setOpenDialogResult(dialogWindow);
+
+  const strip = fakeStrip(makeBrowser("https://example.org/read"));
+  const before = world.tabs.length;
+  world.api.onGlanceBookmarkClick(clickOn(world.api.addGlanceBookmarkButton(strip)));
+
+  assert.equal(world.dialogWindowCalls.length, 1, "a dialog window is asked for");
+  const call = world.dialogWindowCalls[0];
+  assert.ok(call.features.includes("centerscreen"), "in the middle of the screen");
+  assert.ok(call.features.includes("chrome=no"), "with no toolbar of its own");
+  assert.ok(call.features.includes("width=420") && call.features.includes("height=600"));
+  assert.equal(world.windowOpenCalls.length, 0, "and nothing else is tried");
+  assert.equal(world.tabs.length, before, "no tab is made");
+});
+
+test("a second pass never leaves two save buttons", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setPref("extensions.webextensions.uuids", JSON.stringify({ "raindrop@example": "uuid-9" }));
+  world.setAddons([{ id: "raindrop@example", name: "Raindrop.io", isActive: true }]);
+  await world.api.findRaindrop();
+
+  const strip = fakeStrip(makeBrowser("https://example.org/read"));
+  const first = world.api.addGlanceBookmarkButton(strip);
+  // A copy left behind by an earlier pass, with the same classes.
+  const stale = fakeEl("toolbarbutton", "no-squircles zgp-glance-bookmark toolbarbutton-1");
+  strip.appendChild(stale);
+
+  const second = world.api.addGlanceBookmarkButton(strip);
+
+  assert.equal(second, first, "the button already there is reused");
+  const buttons = strip.children.filter(el => String(el.className).includes("zgp-glance-bookmark"));
+  assert.equal(buttons.length, 1, "one button, one cloud");
+});
+
+test("a tab is the last way in when no window can be made", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setAddons([
+    {
+      id: "raindrop@example",
+      name: "Raindrop.io",
+      isActive: true,
+      iconURL: "moz-extension://uuid-1/assets/icon_32.png",
+    },
+  ]);
+  await world.api.findRaindrop();
+  world.setWindowOpenResult(null);
+  world.setOpenFailure("watcher");
+
+  const strip = fakeStrip(makeBrowser("https://example.org/read"));
+  const button = world.api.addGlanceBookmarkButton(strip);
+  const before = world.tabs.length;
+
+  world.api.onGlanceBookmarkClick(clickOn(button));
+
+  assert.equal(world.tabs.length, before + 1, "the page is opened somewhere");
+  assert.ok(
+    world.tabs
+      .at(-1)
+      .linkedBrowser.currentURI.spec.startsWith("moz-extension://uuid-1/index.html#/add?link="),
+    "at Raindrop's add address"
+  );
+});
+
+test("Raindrop mode shows nothing when Raindrop is not installed", async () => {
+  const world = createWorld();
+  world.setPref("zen-glance-plus.bookmark", "raindrop");
+  world.setAddons([]);
+  await world.api.findRaindrop();
+
+  const strip = fakeStrip(makeBrowser("https://example.org/page"));
+  assert.equal(world.api.addGlanceBookmarkButton(strip), null);
+  assert.equal(strip.children.length, 0);
+
+  const event = clickOn({ closest: () => null });
+  world.api.onGlanceBookmarkClick(event);
+  assert.equal(event.prevented, false, "and a click elsewhere is not swallowed");
 });
 
 /* ---------------------------------------------------------------- runner */

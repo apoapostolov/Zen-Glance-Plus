@@ -49,6 +49,20 @@ Six switches decide every site that has no row of its own, under two headings.
 
 A tab is classified once: essentials first, because they are pinned as well, then pinned tabs, then New Tab pages, which are ordinary tabs carrying Zen's own marker, then ordinary tabs.
 
+### Glance bar
+
+**Bookmark in Glance Bar** is experimental. It reaches into Zen's bookmark dialog to arrange it, and for Raindrop into another extension, so it ships switched off, may change, and may be withdrawn.
+
+It decides whether the Glance's button strip carries a save button, and which one. It sits to the left of Copy link.
+
+| Position | Default | Effect |
+| --- | --- | --- |
+| Disabled | Yes | No button is drawn |
+| Bookmarks | | Zen's own bookmark icon, which opens the add bookmark dialog for the page in the Glance |
+| Raindrop | | Raindrop's cloud, which opens its add bookmark dialog for that page |
+
+The Bookmarks position asks for the address the Glance is showing, not the page of whichever tab happens to be selected, so a peeking Glance saves the page you are looking at. The browser's dialog reserves a slot for an icon at the left of its title and fills it with the hollow bookmark it uses for a new bookmark; that slot is cleared for the dialog this button opens, so the dialog carries its title and nothing else. Location and Spaces are placed on one line there — the dialog's own one-column grid puts every field on a line of its own — with the folder menu standing in the place of the word Location — it says where the bookmark goes, and keeps the word as its accessible name — hugging its own text, and Spaces taking the remaining width, so no half-empty box sits between them and the Spaces trigger and expander stay inside their share. Raindrop appears only when the Raindrop.io extension is installed and enabled, and it opens Raindrop's own add bookmark dialog — `index.html#/add?link=…`, in a 420 by 600 popup centred on the window, which is what the extension's address-bar cloud and its save-page shortcut do. The cloud is drawn from a copy carried inside the mod, masked inside the button and filled with the button's own colour, so it takes the same ink as the icons beside it; the add-on's own copy decides its colour with a media query and an opacity, which a dark skin swallows. It opens as a small dialog window in the middle of the screen, 420 by 600, through `openDialog` with `centerscreen,dialog=no,chrome=no`, with the window watcher, `window.open` and finally a tab behind it; the log names the way in that worked. A mod's script runs in a sandbox, so handing any window it can see to a native call is refused with `NS_ERROR_ILLEGAL_VALUE` — the shape is asked for in the features string instead, which needs no window argument.
+
 ### Sites
 
 Add a domain, and its row has three switches: **Link** for clicks that would replace the page you are on, **New tabs** for links that open a tab, and **Domain** to keep pages opened from that site inside it. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the switches above in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
@@ -74,10 +88,12 @@ Patterns match the address path and query, never the domain, because the row alr
 ## Behaviour worth knowing
 
 - Zen holds one Glance at a time. When a second page matches while one is open, the open one is turned into a real tab and the new page is shown as a Glance.
+- A link you follow from inside an open Glance behaves like a link: if the page would have opened in a Glance from the tab the Glance sits over, it loads **in the Glance you are in**. No second Glance is started, and the tab underneath is never used or replaced. A link that explicitly asks for a new tab — a middle click, `Ctrl`-click, or the context menu — opens a new tab, as it says it will. Zen's own rule refuses a Glance opened from a Glance for the same reason; this mod refuses it too and then decides by the tab the Glance sits over.
 - A page that would have opened in a background tab opens as a Glance instead, which brings it on screen.
 - A link that opens a tab from inside a page — `target="_blank"`, a middle click, `window.open` — is judged on the address it will load, not the empty tab that carries it. That is what makes a post clicked inside its own site's essential open as a Glance, which Zen's own rule refuses because the domains match.
 - One thing is out of reach: a plain left click that navigates the tab you are already on creates no tab at all, so there is nothing to divert. **Same Tab Pages** and a row's **Link** switch cover the page-initiated opens that do reach the browser window, such as a context menu's "open link in this tab". Nothing typed in the address bar is affected.
 - Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
+- The Glance's own button strip can carry a **Bookmark** button to the left of Copy link: Zen's bookmark dialog for the page in the Glance, or Raindrop's own panel when that extension is installed. The setting is under **Glance bar**, and it is off until you choose one.
 - The Glance's own button strip carries a fourth button, **Copy link**, drawn with Zen's own link icon so it takes the theme's colour like its neighbours. It copies the address of the page on screen with the browser's own copy action, the same one behind Zen's copy-current-address shortcut and its address bar: the readable form of the link, with tracking parameters stripped as Zen strips them, and the usual confirmation toast. It is there in both states, so it also works while the Glance is only peeking.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
 - Nothing is converted while Zen runs a Glance animation.

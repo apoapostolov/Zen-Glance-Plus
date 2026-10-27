@@ -506,6 +506,7 @@
     originalOpenTrustedLinkIn: null,
     plan: null,
     lastParent: null,
+    raindrop: null,
     started: false,
     progressListener: null,
   };
@@ -514,13 +515,116 @@
     return window.gZenGlanceManager ?? null;
   }
 
+  /** True when this tab is part of a Glance: the overlay's own tab or its base. */
+  function isGlanceTab(tab) {
+    return Boolean(tab?.hasAttribute?.("glance-id") || tab?.hasAttribute?.("zen-glance-tab"));
+  }
+
+  /**
+   * The tab the Glance is showing. Zen marks only that one with
+   * `zen-glance-tab`; the tab underneath carries `glance-id` as well, which is
+   * why a link followed here must never be loaded through a tab.
+   */
+  function theGlanceTab() {
+    try {
+      for (const tab of Array.from(gBrowser.tabs ?? [])) {
+        if (tab.hasAttribute?.("zen-glance-tab")) {
+          return tab;
+        }
+      }
+    } catch (e) {
+      /* a tab strip that cannot be read has no Glance in it */
+    }
+    return null;
+  }
+
+  /** The tab the Glance is shown over: Zen nests the Glance's tab inside it. */
+  function glanceBaseTab(glanceTab) {
+    try {
+      return glanceTab?.parentElement?.closest?.("tab") ?? null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * The page the Glance is showing, taken from the overlay itself. A tab is the
+   * wrong handle for this: both the Glance's tab and the tab beneath it answer
+   * to `glance-id`, and the one beneath is what a click would end up loading.
+   */
+  function openGlanceBrowser() {
+    try {
+      const host =
+        document.querySelector(".browserSidebarContainer.zen-glance-overlay") ??
+        document.querySelector("#zen-glance-detached");
+      return host?.querySelector?.("browser") ?? null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * A link followed inside a Glance is judged by the tab the Glance sits over,
+   * so it keeps the Glance it would have opened. Returns true when the address
+   * was loaded in the open Glance.
+   */
+  function loadInOpenGlance(url) {
+    const target = String(url ?? "");
+    const browser = openGlanceBrowser();
+    if (!target || !browser?.fixupAndLoadURIString) {
+      return false;
+    }
+    try {
+      browser.fixupAndLoadURIString(target, {
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      });
+      trace(`same glance ${target.slice(0, 120)}`);
+      return true;
+    } catch (e) {
+      trace(`same glance failed ${e?.message ?? e}`);
+      return false;
+    }
+  }
+
+  /** Would this address have opened in a Glance from the tab the Glance sits over? */
+  function wouldGlanceFromBase(uriString) {
+    const glanceTab = theGlanceTab();
+    const base = glanceBaseTab(glanceTab);
+    if (!base) {
+      return false;
+    }
+    const url = glanceableUrl(
+      typeof uriString === "string" ? uriString : uriString?.spec
+    );
+    if (!url) {
+      return false;
+    }
+    try {
+      return Boolean(planFrom(base, url));
+    } catch (e) {
+      return false;
+    }
+  }
+
   function isGlanceOpen() {
+    // The peek state does not select the Glance's tab and the overlay is not
+    // always a child of the tab panels, so look for Zen's own markers anywhere.
+    try {
+      for (const tab of Array.from(gBrowser.tabs ?? [])) {
+        if (isGlanceTab(tab)) {
+          return true;
+        }
+      }
+    } catch (e) {
+      /* a tab strip that cannot be read is not a reason to refuse */
+    }
     if (typeof document.querySelector !== "function") {
       return false;
     }
-    return !!(
-      gBrowser.selectedTab?.hasAttribute?.("glance-id") ||
-      document.querySelector("#tabbrowser-tabpanels .zen-glance-overlay")
+    return Boolean(
+      document.querySelector(".browserSidebarContainer.zen-glance-overlay") ||
+        document.querySelector("#zen-glance-detached") ||
+        document.querySelector("#tabbrowser-tabpanels .zen-glance-overlay")
     );
   }
 
@@ -610,6 +714,22 @@
     if (!parent) {
       return null;
     }
+    // Zen refuses this in its own rule for the same reason: a Glance opened
+    // from inside a Glance breaks its one-at-a-time bookkeeping. Those opens
+    // are loaded in the open Glance instead, in wrapAddTab, and that path asks
+    // planFrom because the tab a Glance sits over carries glance-id too.
+    if (isGlanceTab(parent)) {
+      return null;
+    }
+    return planFrom(parent, url);
+  }
+
+  /**
+   * The policy itself, for a page opened from this tab. Callers that are asking
+   * on the tab's behalf rather than opening from it — "would this have glanced?"
+   * — use this directly.
+   */
+  function planFrom(parent, url) {
     const kind = sourceKind(parent);
     if (blockedByDomain(parent, url) || sourceRowBlocks(parent, url)) {
       return null;
@@ -683,6 +803,22 @@
     }
     const parent = tab?.owner ?? null;
     if (!parent) {
+      return false;
+    }
+    // A page opened from inside a Glance belongs to that Glance: load it there
+    // and take the tab Zen made for it away again.
+    if (isGlanceTab(parent)) {
+      if (glanceableUrl(spec) && wouldGlanceFromBase(spec) && loadInOpenGlance(spec)) {
+        trace(`content open in open glance ${spec.slice(0, 120)}`);
+        const dropped = tab;
+        Promise.resolve().then(() => {
+          try {
+            gBrowser.removeTab(dropped);
+          } catch (e) {
+            trace(`in glance: could not drop the spare tab ${e?.message ?? e}`);
+          }
+        });
+      }
       return false;
     }
     const plan = planFor(spec, { ownerTab: parent });
@@ -774,6 +910,11 @@
     if (!manager?.openGlance || !tab?.isConnected || tab.closing) {
       return;
     }
+    // The last door: never hand Zen a second Glance to manage at once.
+    if (isGlanceOpen()) {
+      trace("open glance refused: a Glance is already open");
+      return;
+    }
     trace(
       `adopt via=${plan.via ?? "?"} asked=${String(plan.url ?? "").slice(0, 120)} ` +
         `tab=${String(tab.linkedBrowser?.currentURI?.spec ?? "").slice(0, 120)}`
@@ -842,6 +983,748 @@
     }
     container.appendChild(button);
     return button;
+  }
+
+  /* ---------------------------------------------- bookmark in the Glance bar */
+
+  const GLANCE_BOOKMARK = "zgp-glance-bookmark";
+  const BOOKMARK_ICON = "chrome://browser/skin/zen-icons/bookmark-hollow.svg";
+  const BOOKMARK_PREF = "zen-glance-plus.bookmark";
+  const GLANCE_BOOKMARK_GLYPH = "zgp-glance-bookmark-glyph";
+  /**
+   * Raindrop's cloud, taken from the add-on's own assets/action.svg and baked
+   * here as a shape. The add-on's copy decides its own colour with a media query
+   * and an opacity, which a dark skin swallows whole, and a picture cannot be
+   * recoloured from outside; used as a mask, the shape is the ink and the
+   * button's own colour paints it.
+   */
+  const RAINDROP_CLOUD =
+    "data:image/svg+xml," +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +
+        '<path fill="#000" d="M8 2a5 5 0 0 1 5 5v.1a4 4 0 0 1-1 7.9H4a4 4 0 0 1-1-7.9V7a5 5 0 0 1 5-5Zm0 1.5C6 3.5 4.5 5.1 4.5 7v1.3l-1.1.3a2.5 2.5 0 0 0 .6 4.9h8a2.5 2.5 0 0 0 .6-5l-1.1-.2V7c0-2-1.6-3.5-3.5-3.5Z"/>' +
+        "</svg>"
+    );
+
+  /** Which save button, if any, the Glance's strip carries. */
+  function bookmarkMode() {
+    let value = "off";
+    try {
+      value = Services.prefs.getStringPref(BOOKMARK_PREF, "off");
+    } catch (e) {
+      value = "off";
+    }
+    return value === "bookmarks" || value === "raindrop" ? value : "off";
+  }
+
+  function addonManager() {
+    try {
+      if (window.AddonManager) {
+        return window.AddonManager;
+      }
+      return (
+        ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs")
+          .AddonManager ?? null
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** The add-on's own root, which its pages hang under. */
+  function raindropBase(addon) {
+    // The browser keeps every extension's moz-extension host under this
+    // preference, which is the address an extension page is reached by.
+    try {
+      const map = JSON.parse(
+        Services.prefs.getStringPref("extensions.webextensions.uuids", "{}")
+      );
+      const uuid = map?.[addon?.id];
+      if (uuid) {
+        return `moz-extension://${uuid}`;
+      }
+    } catch (e) {
+      /* no preference to read falls through to the add-on's own address */
+    }
+    try {
+      const url = new URL(String(addon?.iconURL ?? ""));
+      if (url.host) {
+        return `${url.protocol}//${url.host}`;
+      }
+    } catch (e) {
+      /* an add-on without a usable address cannot be opened */
+    }
+    return "";
+  }
+
+  /** The Raindrop add-on, when it is installed and enabled. */
+  function raindropAddon() {
+    return state.raindrop ?? null;
+  }
+
+  /**
+   * Raindrop is looked up once and cached: the strip is built for every Glance,
+   * and asking the add-on manager each time would be work for nothing.
+   */
+  async function findRaindrop() {
+    const manager = addonManager();
+    if (!manager?.getAddonsByTypes) {
+      state.raindrop = null;
+      refreshGlanceBookmarkButtons();
+      return null;
+    }
+    try {
+      const addons = await manager.getAddonsByTypes(["extension"]);
+      const found = Array.from(addons ?? []).find(candidate =>
+        /raindrop/i.test(`${candidate?.name ?? ""} ${candidate?.id ?? ""}`)
+      );
+      state.raindrop =
+        found && found.isActive !== false
+          ? {
+              id: found.id,
+              name: found.name,
+              base: raindropBase(found),
+            }
+          : null;
+      if (state.raindrop) {
+        trace(`glance bookmark: ${state.raindrop.name} at ${state.raindrop.base || "no address"}`);
+      }
+      if (bookmarkMode() === "raindrop" && !state.raindrop) {
+        trace("glance bookmark: Raindrop is not installed or is disabled");
+      }
+    } catch (e) {
+      state.raindrop = null;
+      trace(`glance bookmark: no add-on list ${e?.message ?? e}`);
+    }
+    refreshGlanceBookmarkButtons();
+    return state.raindrop;
+  }
+
+  /**
+   * The save button, to the left of the copy button. It is rebuilt from the
+   * preference each time, so switching the setting takes effect on the strip
+   * that is already there.
+   */
+  function addGlanceBookmarkButton(container) {
+    const doc = container?.ownerDocument ?? document;
+    const mode = bookmarkMode();
+    const raindrop = mode === "raindrop" ? raindropAddon() : null;
+    const icon = mode === "bookmarks" ? BOOKMARK_ICON : raindrop ? RAINDROP_CLOUD : "";
+    const existing = container?.querySelector?.(`.${GLANCE_BOOKMARK}`) ?? null;
+    if (!container?.querySelector || !icon) {
+      // Disabled, or Raindrop asked for and not installed: nothing to show.
+      existing?.remove?.();
+      return null;
+    }
+    // A second pass, a rebuilt strip or a switch of mode must never leave two
+    // buttons or two glyphs behind: that is two clouds side by side.
+    for (const extra of Array.from(container.querySelectorAll?.(`.${GLANCE_BOOKMARK}`) ?? [])) {
+      if (extra !== existing) {
+        extra.remove?.();
+        trace("glance bookmark: removed a second save button");
+      }
+    }
+    let button = existing;
+    if (!button) {
+      button = doc.createXULElement("toolbarbutton");
+      button.className = `no-squircles ${GLANCE_BOOKMARK} toolbarbutton-1`;
+      button.setAttribute("data-act", "glancebookmark");
+      const copy = container.querySelector(`.${GLANCE_COPY}`);
+      container.insertBefore(button, copy ?? null);
+    }
+    const label =
+      mode === "bookmarks" ? "Bookmark this page" : `Save to ${raindrop?.name ?? "Raindrop"}`;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    if (button.style?.setProperty) {
+      // Important for the same reason the copy icon is: a skin styles these
+      // toolbarbuttons with !important of its own.
+      if (mode === "raindrop") {
+        // The glyph is a child of the button, not its background: Zen paints a
+        // chip behind these buttons and colours them with `color`, so a masked
+        // background on the button itself drowns in that chip. A child masked
+        // with the cloud and filled with currentColor is the same ink the icons
+        // beside it use, and hover only repaints the chip.
+        button.style.setProperty("list-style-image", "none", "important");
+        for (const stale of Array.from(
+          button.querySelectorAll?.(`#${GLANCE_BOOKMARK_GLYPH}`) ?? []
+        ).slice(1)) {
+          stale.remove?.();
+        }
+        if (!button.querySelector?.(`#${GLANCE_BOOKMARK_GLYPH}`)) {
+          const glyph = doc.createElementNS
+            ? doc.createElementNS("http://www.w3.org/1999/xhtml", "span")
+            : doc.createElement("span");
+          glyph.id = GLANCE_BOOKMARK_GLYPH;
+          glyph.style?.setProperty?.("display", "block", "important");
+          glyph.style?.setProperty?.("width", "16px", "important");
+          glyph.style?.setProperty?.("height", "16px", "important");
+          glyph.style?.setProperty?.("margin", "auto", "important");
+          glyph.style?.setProperty?.("background-color", "currentColor", "important");
+          glyph.style?.setProperty?.("mask-image", `url("${icon}")`, "important");
+          glyph.style?.setProperty?.("mask-repeat", "no-repeat", "important");
+          glyph.style?.setProperty?.("mask-position", "center", "important");
+          glyph.style?.setProperty?.("mask-size", "contain", "important");
+          button.appendChild(glyph);
+        }
+      } else {
+        button.querySelector?.(`#${GLANCE_BOOKMARK_GLYPH}`)?.remove?.();
+        button.style.setProperty("list-style-image", `url("${icon}")`, "important");
+        button.style.setProperty("-moz-context-properties", "fill, fill-opacity", "important");
+        button.style.setProperty("fill", "currentColor", "important");
+      }
+    }
+    return button;
+  }
+
+  /** Redraw the strip in place, because the template is shared by every Glance. */
+  function refreshGlanceBookmarkButtons() {
+    try {
+      const container = document
+        .getElementById("zen-glance-sidebar-template")
+        ?.content?.querySelector(".zen-glance-sidebar-container");
+      if (container) {
+        addGlanceBookmarkButton(container);
+      }
+    } catch (e) {
+      trace(`glance bookmark: no strip ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * The browser's bookmark dialog reserves a slot at the left of its title and
+   * paints the hollow bookmark into it: the dialog declares `neediconheader`, and
+   * `_getIconUrl()` answers `bookmark-hollow.svg` for a new bookmark. Nothing of
+   * ours put it there, but it reads as a stray icon from the address bar, so it
+   * is cleared for the dialog this button opens.
+   *
+   * The slot can be drawn in an element that the dialog's own layout, a skin or
+   * a theme decides on, so the element itself is hidden rather than the variable
+   * it happens to read, and every window is looked in: the dialog may be a sub
+   * dialog of this window or a window of its own.
+   */
+  function bookmarkDialogDocuments() {
+    const docs = [];
+    const add = candidate => {
+      try {
+        const win =
+          candidate?.contentWindow ??
+          candidate?.frameContentWindow ??
+          (candidate?.document ? candidate : candidate?.docShell?.domWindow);
+        const doc = win?.document;
+        if (!doc) {
+          return;
+        }
+        const id = String(doc.documentElement?.id ?? "");
+        const href = String(doc.location?.href ?? "");
+        if (id === "bookmarkproperties" || href.includes("bookmarkProperties")) {
+          docs.push(doc);
+        }
+      } catch (e) {
+        /* a window that cannot be read has no dialog in it */
+      }
+    };
+    try {
+      const box = window.gDialogBox;
+      add(box?.dialog?.frameContentWindow);
+      add(box?._frame?.contentWindow);
+      add(box?.dialog?.querySelector?.("browser"));
+    } catch (e) {
+      /* no sub dialog */
+    }
+    for (const kind of ["getXULWindowEnumerator", "getEnumerator"]) {
+      try {
+        const list = Services.wm?.[kind]?.(kind === "getEnumerator" ? "navigator:browser" : null);
+        while (list?.hasMoreElements?.()) {
+          add(list.getNext());
+        }
+      } catch (e) {
+        /* the window list is not readable on this build */
+      }
+    }
+    return docs;
+  }
+
+  const DIALOG_FIELDS_ROW = "zen-glance-plus-dialog-row";
+
+  /**
+   * Location and Spaces on one line. The dialog's own sheet is
+   * `#editBookmarkPanelContent { display: grid; grid-template-columns: auto }`,
+   * so every field container is a row of its own and no width can fix that. The
+   * two containers are put inside one flex row instead, each taking half.
+   */
+  function putLocationAndSpacesOnOneRow(doc) {
+    try {
+      if (doc.getElementById?.(DIALOG_FIELDS_ROW)) {
+        return true;
+      }
+      const menu = doc.getElementById?.("editBMPanel_folderMenuList") ?? null;
+      const location = menu?.closest?.(".zenEditBMPanel_fieldContainer");
+      const spaces = doc
+        .getElementById?.("editBMPanel_workspaceDropdown")
+        ?.closest?.(".zenEditBMPanel_fieldContainer");
+      const parent = location?.parentElement ?? null;
+      if (!location || !spaces || !parent || spaces.parentElement !== parent) {
+        return false;
+      }
+      const row = doc.createElementNS
+        ? doc.createElementNS("http://www.w3.org/1999/xhtml", "div")
+        : doc.createElement("div");
+      row.id = DIALOG_FIELDS_ROW;
+      row.style?.setProperty?.("display", "flex", "important");
+      row.style?.setProperty?.("align-items", "center", "important");
+      // No gap: the two labels and their controls have to fit one line, and every
+      // pixel between them is a pixel the Spaces dropdown cannot use.
+      row.style?.setProperty?.("gap", "0", "important");
+      row.style?.setProperty?.("flex-wrap", "nowrap", "important");
+      // The folder chip takes the place of the word Location: it says where the
+      // bookmark will go, which is what the word only announced. The menu keeps
+      // the word as its accessible name before it goes.
+      for (const child of Array.from(location.children ?? [])) {
+        if (String(child.tagName ?? "").toLowerCase() !== "label") {
+          continue;
+        }
+        const name = String(child.textContent ?? "").trim();
+        if (name) {
+          menu?.setAttribute?.("aria-label", name);
+        }
+        child.style?.setProperty?.("display", "none", "important");
+        trace(`glance bookmark: the folder chip stands in for the "${name}" label`);
+      }
+      // The folder menu asks for every pixel of width and keeps its text at the
+      // left of that box, so the rest of it reads as an empty stretch in the
+      // middle of the line. It hugs its own content instead, and Spaces takes
+      // whatever is left over.
+      location.style?.setProperty?.("flex", "0 1 auto", "important");
+      spaces.style?.setProperty?.("flex", "1 1 40%", "important");
+      for (const cell of [location, spaces]) {
+        cell.style?.setProperty?.("min-width", "0", "important");
+        cell.style?.setProperty?.("flex-wrap", "nowrap", "important");
+        cell.style?.setProperty?.("align-items", "center", "important");
+        cell.style?.setProperty?.("gap", "8px", "important");
+        // The label keeps its own width; the control takes what is left, which is
+        // what stops the pair inside a cell from wrapping onto two lines.
+        for (const child of Array.from(cell.children ?? [])) {
+          const isLabel = String(child.tagName ?? "").toLowerCase() === "label";
+          child.style?.setProperty?.("flex", isLabel ? "0 0 auto" : "0 1 auto", "important");
+          child.style?.setProperty?.("min-width", "0", "important");
+        }
+      }
+      // The Location cell stretches, but the menu inside it keeps its own width,
+      // so the rest of the cell stays empty — which is the wide gap that made
+      // Spaces look pinned to the right edge. The menu fills its half instead.
+      const menuRow = menu?.parentElement ?? null;
+      menuRow?.style?.setProperty?.("display", "flex", "important");
+      menuRow?.style?.setProperty?.("flex", "0 1 auto", "important");
+      menuRow?.style?.setProperty?.("min-width", "0", "important");
+      if (menu?.style?.setProperty) {
+        // `flex="1"` on the menulist and `width: -moz-available` in the sheet are
+        // both overridden here: it is as wide as its own contents.
+        menu.style.setProperty("flex", "0 1 auto", "important");
+        menu.style.setProperty("width", "auto", "important");
+        menu.style.setProperty("min-width", "0", "important");
+        menu.style.setProperty("max-width", "none", "important");
+        // So the chip starts exactly where the word it replaces started: the
+        // menulist's own inline padding goes, and with it the 16px this dialog
+        // keeps on that menu's right in its own sheet.
+        menu.style.setProperty("padding-inline-start", "0", "important");
+        menu.style.setProperty("margin-inline-start", "0", "important");
+        menu.style.setProperty("margin-inline-end", "0", "important");
+      }
+      for (const child of Array.from(menuRow?.children ?? [])) {
+        if (child !== menu) {
+          child.style?.setProperty?.("flex", "0 0 auto", "important");
+        }
+      }
+      // The Spaces trigger asks for the full cell width on its own, which is why
+      // the pair overflowed; it takes a share of the cell now and shortens the
+      // name it shows rather than the box it sits in.
+      const dropdown =
+        doc.getElementById?.("editBMPanel_workspaceDropdown") ??
+        spaces.querySelector?.(".workspace-dropdown");
+      dropdown?.style?.setProperty?.("width", "auto", "important");
+      dropdown?.style?.setProperty?.("flex", "1 1 0", "important");
+      dropdown?.style?.setProperty?.("min-width", "0", "important");
+      const trigger = doc.getElementById?.("editBMPanel_workspaceSummary");
+      trigger?.style?.setProperty?.("min-width", "0", "important");
+      trigger?.style?.setProperty?.("overflow", "hidden", "important");
+      trigger?.style?.setProperty?.("text-overflow", "ellipsis", "important");
+      trigger?.style?.setProperty?.("white-space", "nowrap", "important");
+      // And the 16px it keeps on its right is not needed on a line with no room
+      // to spare.
+      trigger?.style?.setProperty?.("margin-inline-end", "0", "important");
+      doc
+        .getElementById?.("editBMPanel_workspacesSelectorExpander")
+        ?.style?.setProperty?.("flex", "0 0 auto", "important");
+      parent.insertBefore(row, location);
+      row.appendChild(location);
+      row.appendChild(spaces);
+      trace(
+        `glance bookmark: fields ${spanOf(row)}: Location ${spanOf(location)} (menu ${spanOf(menu)}) Spaces ${spanOf(spaces)}`
+      );
+      return true;
+    } catch (e) {
+      trace(`glance bookmark: the two fields did not become one row (${e?.name ?? e})`);
+      return false;
+    }
+  }
+
+  /** Hide the icon, whatever element the dialog draws it in. */
+  function clearBookmarkDialogIcon(doc) {
+    let touched = false;
+    let icon = null;
+    try {
+      doc.documentElement?.style?.setProperty("--icon-url", "none", "important");
+      touched = true;
+    } catch (e) {
+      /* no such variable to clear */
+    }
+    try {
+      icon = doc.querySelector?.(".titleIcon") ?? null;
+      if (icon?.style?.setProperty) {
+        icon.style.setProperty("display", "none", "important");
+        touched = true;
+      }
+    } catch (e) {
+      /* an icon drawn some other way is described by the fingerprint below */
+    }
+    let container = null;
+    try {
+      container = doc.getElementById?.("titleContainer") ?? null;
+      container?.setAttribute?.("noicon", "true");
+    } catch (e) {
+      /* the container is a nice-to-have */
+    }
+    // Settled when the icon is gone, or when there is no icon element to hide in
+    // a dialog that has already drawn its header.
+    return Boolean(icon?.style?.setProperty || (container && !icon));
+  }
+
+  /** The windows that are open, so a missed dialog can be found next time. */
+  function openWindowFingerprint() {
+    const seen = [];
+    try {
+      const list = Services.wm?.getEnumerator?.(null);
+      while (list?.hasMoreElements?.() && seen.length < 6) {
+        try {
+          const win = list.getNext();
+          const doc = win?.document;
+          seen.push(`${String(doc?.location?.href ?? "?").slice(-32)}#${doc?.documentElement?.id ?? "?"}`);
+        } catch (e) {
+          seen.push("?");
+        }
+      }
+    } catch (e) {
+      return "unreadable";
+    }
+    return seen.join(" ") || "none";
+  }
+
+  /** What the dialog's header holds, so a wrong guess can be read next time. */
+  function dialogHeaderFingerprint(doc) {
+    try {
+      const header =
+        doc.getElementById?.("titleContainer") ??
+        doc.querySelector?.("dialog") ??
+        doc.documentElement;
+      const parts = Array.from(header?.children ?? [])
+        .slice(0, 8)
+        .map(el => `${el.tagName?.toLowerCase() ?? "?"}.${String(el.className ?? "").trim() || "-"}`);
+      const icon = doc.querySelector?.(".titleIcon");
+      return `root=${doc.documentElement?.id ?? "?"} icon=${icon ? "yes" : "no"} header=${parts.join(",")}`;
+    } catch (e) {
+      return "an unreadable dialog";
+    }
+  }
+
+  function hideBookmarkDialogIcon() {
+    let tries = 0;
+    let reported = false;
+    const look = () => {
+      tries += 1;
+      const docs = bookmarkDialogDocuments();
+      let hidden = 0;
+      let rowed = 0;
+      for (const doc of docs) {
+        // Both of these are written on every pass, because the dialog fills them
+        // in during its own init, which runs after the window appears.
+        try {
+          doc.documentElement?.style?.setProperty("--icon-url", "none", "important");
+        } catch (e) {
+          /* nothing to clear */
+        }
+        try {
+          doc.getElementById?.("titleContainer")?.setAttribute?.("noicon", "true");
+        } catch (e) {
+          /* no container to mark */
+        }
+        try {
+          const icon = doc.querySelector?.(".titleIcon");
+          if (icon?.style?.setProperty) {
+            icon.style.setProperty("display", "none", "important");
+            hidden += 1;
+          }
+        } catch (e) {
+          /* described by the fingerprint */
+        }
+        try {
+          if (putLocationAndSpacesOnOneRow(doc)) {
+            rowed += 1;
+          }
+        } catch (e) {
+          /* the row is reported by its own trace line */
+        }
+        if (!reported) {
+          reported = true;
+          trace(`glance bookmark: dialog header ${dialogHeaderFingerprint(doc)}`);
+        }
+      }
+      // Done only once both jobs are settled: the header slot is added after the
+      // window opens, and the two field rows are only there once the dialog has
+      // built its content, so an early pass can find nothing.
+      if (hidden && rowed) {
+        trace(`glance bookmark: dialog prepared in ${rowed} document(s)`);
+        return true;
+      }
+      if (hidden && !rowed && tries > 8) {
+        trace(`glance bookmark: the icon is gone, the two fields were not found (${docs.length} document(s))`);
+        return false;
+      }
+      if (tries < 60) {
+        const later = window.setTimeout ?? setTimeout;
+        later(look, 80);
+        return false;
+      }
+      trace(
+        `glance bookmark: no icon element to clear in ${docs.length} dialog document(s); windows ${openWindowFingerprint()}`
+      );
+      return false;
+    };
+    return look();
+  }
+
+  /**
+   * Bookmarks the page the Glance is showing. Zen's own star reads the selected
+   * browser, and a peeking Glance leaves another tab selected, so the dialog is
+   * opened for this address instead of for whatever is selected.
+   */
+  function bookmarkGlancePage(browser) {
+    const hook = window.PlacesCommandHook;
+    const spec = String(browser?.currentURI?.spec ?? browser?.userTypedValue ?? "");
+    if (!spec || !hook?.bookmarkLink) {
+      trace("glance bookmark: no bookmark service to ask");
+      return false;
+    }
+    const title = String(browser?.contentTitle ?? "") || spec;
+    try {
+      Promise.resolve(hook.bookmarkLink(spec, title)).catch(e =>
+        trace(`glance bookmark: ${e?.message ?? e}`)
+      );
+      // The dialog opens on a later turn, so this watches for it.
+      hideBookmarkDialogIcon();
+    } catch (e) {
+      trace(`glance bookmark: ${e?.message ?? e}`);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Raindrop's add dialog, opened the way Raindrop opens it. Its own code builds
+   * `/index.html#/add?link=<address>` and puts that in a 420 by 600 popup window
+   * centred on the window it came from — that is what its address-bar cloud and
+   * its save-page shortcut do. Pressing its toolbar button instead shows the
+   * extension's panel, which is a different thing.
+   */
+  function openRaindropDialog(browser) {
+    const addon = raindropAddon();
+    if (!addon) {
+      trace("glance bookmark: Raindrop is not there to open");
+      return false;
+    }
+    const spec = String(browser?.currentURI?.spec ?? browser?.userTypedValue ?? "");
+    if (!spec || !addon.base) {
+      trace("glance bookmark: no page or no Raindrop to save it with");
+      return false;
+    }
+    // A mod's script runs in a sandbox, so the `window` it can see is not an
+    // nsIDOMWindow: passing it to the window watcher, or calling open on it,
+    // fails with NS_ERROR_ILLEGAL_VALUE however right the rest of the call is.
+    // The page's own document knows the window that drew it.
+    const parent = chromeWindowOf(browser) ?? chromeWindowOf(gBrowser?.selectedBrowser);
+    if (!parent) {
+      trace("glance bookmark: no chrome window to open Raindrop's dialog from");
+    } else {
+      trace(`glance bookmark: opening Raindrop's popup over ${whereOf(parent)}`);
+    }
+    const width = 420;
+    const height = 600;
+    const screenX = Number(parent?.screenX ?? 0);
+    const screenY = Number(parent?.screenY ?? 0);
+    const outerWidth = Number(parent?.outerWidth ?? width);
+    const outerHeight = Number(parent?.outerHeight ?? height);
+    const left = Math.round(screenX + (outerWidth - width) / 2);
+    const top = Math.round(screenY + (outerHeight - height) / 2);
+    const url = `${addon.base}/index.html#/add?link=${encodeURIComponent(spec)}`;
+    // Raindrop opens this itself with windows.create({type: "popup"}), which is
+    // a browser popup window: no toolbar, no tab strip, 420 by 600.
+    const features =
+      `popup,width=${width},height=${height},left=${left},top=${top},` +
+      "resizable=yes,scrollbars=yes";
+    const opened = [];
+
+    // The extension makes this with windows.create({type: "popup"}): a window of
+    // its own, with no toolbar and no tab strip. openDialog is the only way in
+    // that passes strings alone — handing a window to a native call is what
+    // failed with NS_ERROR_ILLEGAL_VALUE, twice, from both `window` and the
+    // document's own view.
+    const dialogFeatures =
+      `centerscreen,dialog=no,chrome=no,resizable,width=${width},height=${height}`;
+    for (const host of [parent, window]) {
+      try {
+        const made = host?.openDialog?.(url, "raindrop-add", dialogFeatures, null);
+        if (made) {
+          made.focus?.();
+          trace(`glance bookmark: Raindrop's dialog window: ${whereOf(made)}`);
+          return true;
+        }
+        opened.push("a dialog window was not made");
+      } catch (e) {
+        opened.push(`a dialog window failed (${e?.name ?? e})`);
+      }
+    }
+
+    try {
+      const watcher = Services.ww?.openWindow?.(parent, url, "raindrop-add", features, null);
+      if (watcher) {
+        watcher.focus?.();
+        trace(`glance bookmark: Raindrop's dialog, window watcher: ${whereOf(watcher)}`);
+        return true;
+      }
+      opened.push("the window watcher returned nothing");
+    } catch (e) {
+      opened.push(`the window watcher failed (${e?.name ?? e})`);
+    }
+
+    try {
+      const plain = parent?.open?.(url, "raindrop-add", features);
+      if (plain) {
+        trace(`glance bookmark: Raindrop's dialog, window.open: ${whereOf(plain)}`);
+        return true;
+      }
+      opened.push("window.open returned nothing");
+    } catch (e) {
+      opened.push(`window.open failed (${e?.name ?? e})`);
+    }
+
+    // A tab always works, and the page is the same page.
+    try {
+      const tab = gBrowser.addTab(url, {
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+        inBackground: false,
+      });
+      if (tab) {
+        trace(`glance bookmark: Raindrop's dialog in a tab, after ${opened.join("; ")}`);
+        return true;
+      }
+    } catch (e) {
+      opened.push(`a tab failed (${e?.name ?? e})`);
+    }
+
+    trace(`glance bookmark: could not open Raindrop: ${opened.join("; ")}`);
+    return false;
+  }
+
+  /**
+   * The real chrome window behind an element. A mod's script runs in a sandbox,
+   * so the `window` it can see is not an nsIDOMWindow: passing it to the window
+   * watcher, or calling open on it, fails with NS_ERROR_ILLEGAL_VALUE no matter
+   * how right the rest of the call is. The element's own document knows the
+   * window that drew it.
+   */
+  function chromeWindowOf(element) {
+    try {
+      const win = element?.ownerDocument?.defaultView;
+      if (win) {
+        return win;
+      }
+    } catch (e) {
+      /* fall through to the window list */
+    }
+    try {
+      return Services.wm.getMostRecentWindow("navigator:browser") ?? null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** How far an element reaches across its line, for the log. */
+  function spanOf(element) {
+    try {
+      const rect = element?.getBoundingClientRect?.();
+      if (!rect) {
+        return "?";
+      }
+      return `${Math.round(rect.left)}-${Math.round(rect.right)}`;
+    } catch (e) {
+      return "?";
+    }
+  }
+
+  /** What a window ended up loading, for the log. */
+  function whereOf(opened) {
+    try {
+      return String(
+        opened?.gBrowser?.currentURI?.spec ??
+          opened?.location?.href ??
+          opened?.document?.location?.href ??
+          "a window"
+      ).slice(0, 120);
+    } catch (e) {
+      return "a window";
+    }
+  }
+
+  function onGlanceBookmarkClick(event) {
+    const button = event.target?.closest?.(`.${GLANCE_BOOKMARK}`);
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (bookmarkMode() === "raindrop") {
+      openRaindropDialog(glanceBrowserOf(button));
+      return;
+    }
+    bookmarkGlancePage(glanceBrowserOf(button));
+  }
+
+  function installGlanceBookmarkButton() {
+    refreshGlanceBookmarkButtons();
+    findRaindrop();
+  }
+
+  function onBookmarkPrefChange() {
+    refreshGlanceBookmarkButtons();
+    findRaindrop();
+  }
+
+  function watchBookmarkPref() {
+    try {
+      Services.prefs.addObserver(BOOKMARK_PREF, onBookmarkPrefChange);
+      return true;
+    } catch (e) {
+      trace(`glance bookmark: no preference to watch ${e?.message ?? e}`);
+      return false;
+    }
+  }
+
+  function unwatchBookmarkPref() {
+    try {
+      Services.prefs.removeObserver(BOOKMARK_PREF, onBookmarkPrefChange);
+    } catch (e) {
+      /* stopping twice is not a problem */
+    }
   }
 
   function installGlanceCopyButton() {
@@ -1276,6 +2159,7 @@
 
   const styledWindows = new WeakSet();
   const hookedWindows = new WeakSet();
+  const watchedTableDocs = new WeakSet();
   const prefsAttempts = new WeakMap();
   const prefsTimers = new Map();
 
@@ -1545,6 +2429,7 @@
         continue;
       }
       trace(`table: ${domains.length} site rows, placed by ${placement}`);
+      watchTableDocument(win, doc);
       if (typeof table.addEventListener !== "function") {
         return true;
       }
@@ -1557,9 +2442,9 @@
     const attempts = (prefsAttempts.get(win) ?? 0) + 1;
     prefsAttempts.set(win, attempts);
     if (attempts === 1 || attempts % 8 === 0) {
-      trace(
-        `table: no place for it in ${settingsDocuments(win).length} documents, attempt ${attempts}`
-      );
+      const docs = settingsDocuments(win);
+      const where = docs.map(documentFingerprint).join(" ;; ");
+      trace(`table: no place for it in ${docs.length} documents, attempt ${attempts} :: ${where}`);
     }
     return false;
   }
@@ -1572,6 +2457,79 @@
    * The settings page renders its sections lazily, so the anchor appears later
    * than the window does. Watch for it instead of guessing a delay.
    */
+  /**
+   * Sine builds a mod's settings inside its Configure dialog and rebuilds that
+   * content whenever the dialog is opened again, which throws the table away
+   * with it. Watch the document the table landed in, whatever document that is,
+   * so the next rebuild puts it back.
+   */
+  /** One compact line about a document, so a failed placement can be read. */
+  function documentFingerprint(doc) {
+    const bits = [];
+    try {
+      bits.push(String(doc.location?.href ?? "?").slice(-40));
+    } catch (e) {
+      bits.push("no-href");
+    }
+    try {
+      const dialog = doc.querySelector?.(
+        "#sineItemPreferenceDialogContent, .sineItemPreferenceDialogContent"
+      );
+      bits.push(dialog ? "dialog" : "no-dialog");
+    } catch (e) {
+      bits.push("dialog?");
+    }
+    try {
+      const labels = Array.from(doc.querySelectorAll?.(".separator-label") ?? []);
+      bits.push(`labels=${labels.length}`);
+    } catch (e) {
+      bits.push("labels?");
+    }
+    try {
+      const ids = Array.from(doc.querySelectorAll?.("[id^='zen-glance-plus']") ?? []).map(
+        el => el.id
+      );
+      bits.push(ids.length ? `ids=${ids.slice(0, 3).join("|")}` : "ids=none");
+    } catch (e) {
+      bits.push("ids?");
+    }
+    try {
+      bits.push(String(doc.body?.textContent ?? "").includes("Sites") ? "sites-text" : "no-sites-text");
+    } catch (e) {
+      bits.push("text?");
+    }
+    return bits.join(" ");
+  }
+
+  function watchTableDocument(win, doc) {
+    if (!doc?.documentElement || watchedTableDocs.has(doc)) {
+      return;
+    }
+    watchedTableDocs.add(doc);
+    const Observer = win?.MutationObserver ?? window.MutationObserver;
+    if (typeof Observer !== "function") {
+      return;
+    }
+    let queued = false;
+    try {
+      new Observer(() => {
+        if (queued) {
+          return;
+        }
+        queued = true;
+        win.setTimeout(() => {
+          queued = false;
+          if (!doc.getElementById?.(UI_TABLE)) {
+            trace("table: gone from the settings page, putting it back");
+            injectTable(win);
+          }
+        }, 150);
+      }).observe(doc.documentElement, { childList: true, subtree: true });
+    } catch (e) {
+      trace(`table: cannot watch that document ${e?.message ?? e}`);
+    }
+  }
+
   function watchPreferencesWindow(win) {
     if (!win || hookedWindows.has(win)) {
       return;
@@ -1659,6 +2617,27 @@
         plan = null;
         trace(`addTab error ${e?.message ?? e}`);
       }
+      // A link followed from inside a Glance loads in that Glance. Letting the
+      // tab through would either start a second Glance or leave the overlay
+      // behind the tab the click created, and both break Zen's bookkeeping.
+      const opener = (() => {
+        try {
+          return parentFor(params);
+        } catch (e) {
+          return null;
+        }
+      })();
+      if (!plan && isGlanceTab(opener)) {
+        const target = glanceableUrl(
+          typeof uriString === "string" ? uriString : uriString?.spec
+        );
+        if (target && wouldGlanceFromBase(uriString) && loadInOpenGlance(target)) {
+          trace(`addTab in open glance ${target.slice(0, 120)}`);
+          return theGlanceTab() ?? opener;
+        }
+        // Anything else was asked for as a tab, so it becomes one.
+        trace(`addTab beside open glance ${String(uriString).slice(0, 120)}`);
+      }
       if (plan) {
         trace(`addTab glance ${String(uriString).slice(0, 120)}`);
       } else {
@@ -1727,7 +2706,11 @@
     watchPreferencesTabs();
     scanPreferencesTabs();
     installGlanceCopyButton();
+    // The save button sits to the left of copy, so it goes in after it.
+    installGlanceBookmarkButton();
+    watchBookmarkPref();
     window.addEventListener("click", onGlanceCopyClick, true);
+    window.addEventListener("click", onGlanceBookmarkClick, true);
     // A restored settings tab can be reached through a content window that the
     // real page later replaces, and that new window is not the one that was
     // hooked. Look again for a while after start, then let it be.
@@ -1809,6 +2792,8 @@
       state.progressListener = null;
     }
     window.removeEventListener("click", onGlanceCopyClick, true);
+    window.removeEventListener("click", onGlanceBookmarkClick, true);
+    unwatchBookmarkPref();
     gBrowser.tabContainer.removeEventListener("TabOpen", onTabOpen, true);
     gBrowser.tabContainer.removeEventListener("TabSelect", onTabSelect, true);
     if (state.prefsScan) {
@@ -1832,6 +2817,7 @@
     status,
     sourceKind,
     planFor,
+    planFrom,
     redirectPlan,
     setting,
     state,
@@ -1866,8 +2852,27 @@
     COPY_ICON,
     copyGlanceUrl,
     glanceBrowserOf,
+    theGlanceTab,
+    glanceBaseTab,
+    openGlanceBrowser,
+    loadInOpenGlance,
+    wouldGlanceFromBase,
     onGlanceCopyClick,
     GLANCE_COPY,
+    onGlanceBookmarkClick,
+    GLANCE_BOOKMARK,
+    BOOKMARK_ICON,
+    BOOKMARK_PREF,
+    bookmarkMode,
+    addGlanceBookmarkButton,
+    refreshGlanceBookmarkButtons,
+    bookmarkGlancePage,
+    hideBookmarkDialogIcon,
+    openRaindropDialog,
+    RAINDROP_CLOUD,
+    raindropBase,
+    findRaindrop,
+    installGlanceBookmarkButton,
     rerender,
     onTableClick,
     onTableChange,

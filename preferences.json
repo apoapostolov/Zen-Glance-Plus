@@ -1,5 +1,9 @@
 [
-  { "type": "separator", "id": "zen-glance-plus-apply-to", "label": "**Apply to**" },
+  {
+    "type": "separator",
+    "id": "zen-glance-plus-apply-to",
+    "label": "**Apply to**"
+  },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.essential",
@@ -18,8 +22,10 @@
     "label": "Normal Tabs",
     "defaultValue": false
   },
-
-  { "type": "separator", "label": "**Glance applies to**" },
+  {
+    "type": "separator",
+    "label": "**Glance applies to**"
+  },
   {
     "type": "checkbox",
     "property": "zen-glance-plus.newtab",
@@ -38,6 +44,34 @@
     "label": "Same Domain Only",
     "defaultValue": false
   },
-
-  { "type": "separator", "id": "zen-glance-plus-domains", "label": "**Sites**" }
+  {
+    "type": "separator",
+    "label": "**Glance bar**"
+  },
+  {
+    "property": "zen-glance-plus.bookmark",
+    "label": "Bookmark in Glance Bar (experimental)",
+    "type": "dropdown",
+    "defaultValue": "off",
+    "options": [
+      {
+        "label": "Disabled",
+        "value": "off"
+      },
+      {
+        "label": "Bookmarks",
+        "value": "bookmarks"
+      },
+      {
+        "label": "Raindrop",
+        "value": "raindrop"
+      }
+    ],
+    "placeholder": false
+  },
+  {
+    "type": "separator",
+    "id": "zen-glance-plus-domains",
+    "label": "**Sites**"
+  }
 ]
