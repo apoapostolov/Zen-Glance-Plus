@@ -213,6 +213,28 @@
   }
 
   /**
+   * A row's `Domain` switch answers for pages opened from that row's site: with
+   * it on, a page that leaves the site is not glanced. A row for the target
+   * already answers only for its own domain, so the switch has to be read from
+   * the tab that started the open, not from the address being opened.
+   */
+  function sourceRowBlocks(parent, url) {
+    const source = hostOfUrl(parent?.linkedBrowser?.currentURI?.spec);
+    if (!source) {
+      return false;
+    }
+    const row = domainRuleFor(source);
+    if (!row?.domain) {
+      return false;
+    }
+    const target = hostOfUrl(url);
+    if (!target) {
+      return false;
+    }
+    return registrableDomain(target) !== registrableDomain(row.host);
+  }
+
+  /**
    * `Same Domain Only`: a page is glanced only when it belongs to the domain
    * the link was opened from. A source with no domain — a New Tab page — puts
    * no constraint on where it opens.
@@ -299,6 +321,7 @@
         host,
         tabs: entry.tabs !== false,
         links: entry.links === true,
+        domain: entry.domain === true,
         paths: parsePaths(entry.paths),
       });
     }
@@ -582,7 +605,7 @@
       return null;
     }
     const kind = sourceKind(parent);
-    if (blockedByDomain(parent, url)) {
+    if (blockedByDomain(parent, url) || sourceRowBlocks(parent, url)) {
       return null;
     }
     // A row for this site answers for its domain, in both directions.
@@ -795,7 +818,7 @@
     if (!url) {
       return null;
     }
-    if (blockedByDomain(parent, url)) {
+    if (blockedByDomain(parent, url) || sourceRowBlocks(parent, url)) {
       return null;
     }
     // A row for this site answers on its own, whatever the global switch says.
@@ -844,7 +867,7 @@
     if (current.some(rule => rule.host === host)) {
       return null;
     }
-    const next = [...current, { host, tabs: true, links: false, paths: [] }];
+    const next = [...current, { host, tabs: true, links: false, domain: false, paths: [] }];
     writeDomains(next);
     return next;
   }
@@ -980,6 +1003,7 @@
     row.appendChild(site);
     row.appendChild(makeBox("links", rule.links, `Links on ${rule.host}`));
     row.appendChild(makeBox("tabs", rule.tabs, `New tabs on ${rule.host}`));
+    row.appendChild(makeBox("domain", rule.domain, `Same domain only on ${rule.host}`));
     row.appendChild(remove);
 
     const paths = el(doc, "div", "zgp-paths");
@@ -1076,7 +1100,7 @@
     root.appendChild(add);
 
     const head = el(doc, "div", "zgp-head");
-    for (const title of ["Site", "Link", "New tabs", ""]) {
+    for (const title of ["Site", "Link", "New tabs", "Domain", ""]) {
       const cell = el(doc, "span", "zgp-headcell");
       cell.textContent = title;
       head.appendChild(cell);
@@ -1616,6 +1640,7 @@
     normaliseDomain,
     registrableDomain,
     blockedByDomain,
+    sourceRowBlocks,
     offerNewPresets,
     readSeeded,
     normalisePathPattern,

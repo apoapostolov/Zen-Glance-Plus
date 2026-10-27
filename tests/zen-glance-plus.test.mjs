@@ -498,6 +498,51 @@ test("status reports what the mod is doing", () => {
   assert.equal(world.api.LOG, "[zen-glance-plus]");
 });
 
+test("a row's Domain switch keeps its site's own links inside the site", async () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "reddit.com", tabs: true, links: true, domain: true, paths: [] },
+      ]),
+    },
+  });
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.reddit.com/",
+  });
+  world.select(essential);
+
+  const stays = world.gBrowser.addTab("https://old.reddit.com/r/zen/", {});
+  await tick();
+  assert.equal(stays.getAttribute("zen-glance-tab"), true, "a subdomain is still the site");
+
+  world.setOverlay(false);
+  const leaves = world.gBrowser.addTab("https://example.org/a", {});
+  await tick();
+  assert.equal(leaves.getAttribute("zen-glance-tab"), null, "leaving the site is refused");
+});
+
+test("a row's Domain switch is off unless the row turns it on", async () => {
+  const world = createWorld({
+    prefs: {
+      "zen-glance-plus.domains": JSON.stringify([
+        { host: "reddit.com", tabs: true, links: true, paths: [] },
+      ]),
+    },
+  });
+  const essential = makeTab("essential", {
+    attrs: { "zen-essential": "" },
+    pinned: true,
+    url: "https://www.reddit.com/",
+  });
+  world.select(essential);
+
+  const leaves = world.gBrowser.addTab("https://example.org/a", {});
+  await tick();
+  assert.equal(leaves.getAttribute("zen-glance-tab"), true, "the row alone does not bound it");
+});
+
 test("Same Domain Only keeps a page in the domain it was opened from", async () => {
   const world = createWorld();
   world.setPref("zen-glance-plus.samedomain", true);

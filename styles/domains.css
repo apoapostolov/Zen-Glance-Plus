@@ -116,7 +116,7 @@
 #zen-glance-plus-domains-table .zgp-head,
 #zen-glance-plus-domains-table .zgp-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px 56px 32px;
+  grid-template-columns: minmax(0, 1fr) 56px 56px 56px 32px;
   column-gap: 8px;
   align-items: center;
   width: 100%;
@@ -137,7 +137,8 @@
 
 #zen-glance-plus-domains-table .zgp-headcell:nth-child(2),
 #zen-glance-plus-domains-table .zgp-headcell:nth-child(3),
-#zen-glance-plus-domains-table .zgp-headcell:nth-child(4) {
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(4),
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(5) {
   display: flex;
   justify-content: center;
   text-align: center;

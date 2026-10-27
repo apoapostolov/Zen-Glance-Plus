@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/settings-panel.png" alt="Glance Plus settings: switches for the tab kinds a Glance applies to, and a table of sites each with a Link switch, a New tabs switch and its link patterns" width="760">
+  <img src="assets/settings-panel.png" alt="Glance Plus settings: switches for the tab kinds a Glance applies to, and a table of sites each with Link, New tabs and Domain switches plus its link patterns" width="760">
 </p>
 
 ## What it changes
@@ -51,7 +51,9 @@ A tab is classified once: essentials first, because they are pinned as well, the
 
 ### Sites
 
-Add a domain, and its row has two switches: **Link** for clicks that would replace the page you are on, and **New tabs** for links that open a tab. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the five switches in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
+Add a domain, and its row has three switches: **Link** for clicks that would replace the page you are on, **New tabs** for links that open a tab, and **Domain** to keep pages opened from that site inside it. A row answers for its domain and every subdomain, so `reddit.com` covers `old.reddit.com`, and it overrides the switches above in both directions: with **New tabs** off, that site never glances a new tab, even from an essential.
+
+**Domain** is the per-site form of `Same Domain Only`, read from the tab that starts the open rather than from the address being opened: with it ticked on `reddit.com`, a link leaving Reddit opens as an ordinary tab, while `old.reddit.com` still glances because a subdomain is the same site. It is off on every row, including the shipped ones.
 
 Changes save as you make them and apply to the next page you open.
 
@@ -74,7 +76,7 @@ Patterns match the address path and query, never the domain, because the row alr
 - Zen holds one Glance at a time. When a second page matches while one is open, the open one is turned into a real tab and the new page is shown as a Glance.
 - A page that would have opened in a background tab opens as a Glance instead, which brings it on screen.
 - A link that opens a tab from inside a page — `target="_blank"`, a middle click, `window.open` — is judged on the address it will load, not the empty tab that carries it. That is what makes a post clicked inside its own site's essential open as a Glance, which Zen's own rule refuses because the domains match.
-- One thing is out of reach: a plain left click that navigates the tab you are already on creates no tab at all, so there is nothing to divert. `Apply to Normal Tab Redirection` and a row's **Link** switch cover the page-initiated opens that do reach the browser window, such as a context menu's "open link in this tab". Nothing typed in the address bar is affected.
+- One thing is out of reach: a plain left click that navigates the tab you are already on creates no tab at all, so there is nothing to divert. **Same Tab Pages** and a row's **Link** switch cover the page-initiated opens that do reach the browser window, such as a context menu's "open link in this tab". Nothing typed in the address bar is affected.
 - Essential and pinned tab creation, "open all in tabs", session restore and unloaded opens are left alone.
 - Zen's own Glance switch wins. With Glance turned off in `Settings > Look and Feel`, this mod does nothing.
 - Nothing is converted while Zen runs a Glance animation.

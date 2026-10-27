@@ -533,7 +533,7 @@ test("adding a site writes it with new tabs on, same tab off, no patterns", () =
   const next = world.api.addDomain("https://www.example.com/some/page");
   assert.equal(next.length, 1);
   assert.deepEqual(world.stored(), [
-    { host: "example.com", tabs: true, links: false, paths: [] },
+    { host: "example.com", tabs: true, links: false, domain: false, paths: [] },
   ]);
 });
 
@@ -554,8 +554,8 @@ test("a flag is flipped on one row and leaves the others alone", () => {
   });
   world.api.setDomainFlag(1, "links", true);
   assert.deepEqual(world.stored(), [
-    { host: "a.example", tabs: true, links: false, paths: [] },
-    { host: "b.example", tabs: true, links: true, paths: [] },
+    { host: "a.example", tabs: true, links: false, domain: false, paths: [] },
+    { host: "b.example", tabs: true, links: true, domain: false, paths: [] },
   ]);
   assert.equal(world.api.setDomainFlag(5, "links", true), null);
   assert.equal(world.api.setDomainFlag(0, "other", true), null);
@@ -600,7 +600,7 @@ test("removing a row drops exactly that row", () => {
 
 /* ----------------------------------------------------------- the table */
 
-test("the table renders a row per site with its two switches", () => {
+test("the table renders a row per site with its three switches", () => {
   const world = createWorld({
     domains: [
       { host: "reddit.com", tabs: true, links: false },
@@ -615,13 +615,16 @@ test("the table renders a row per site with its two switches", () => {
   assert.equal(rows[0].querySelector(".zgp-site-name").textContent, "reddit.com");
 
   const boxes = rows[0].querySelectorAll("input");
-  assert.equal(boxes.length, 2);
+  assert.equal(boxes.length, 3);
   assert.equal(boxes[0].getAttribute("data-act"), "links");
   assert.equal(boxes[0].checked, false);
   assert.equal(boxes[0].getAttribute("aria-label"), "Links on reddit.com");
   assert.equal(boxes[1].getAttribute("data-act"), "tabs");
   assert.equal(boxes[1].checked, true);
   assert.equal(boxes[1].getAttribute("aria-label"), "New tabs on reddit.com");
+  assert.equal(boxes[2].getAttribute("data-act"), "domain");
+  assert.equal(boxes[2].checked, false);
+  assert.equal(boxes[2].getAttribute("aria-label"), "Same domain only on reddit.com");
 
   const second = rows[1].querySelectorAll("input");
   assert.equal(second[0].getAttribute("data-act"), "links");
@@ -632,7 +635,7 @@ test("the table renders a row per site with its two switches", () => {
   const heads = table.querySelector(".zgp-head").querySelectorAll(".zgp-headcell");
   assert.deepEqual(
     heads.map(cell => cell.textContent),
-    ["Site", "Link", "New tabs", ""]
+    ["Site", "Link", "New tabs", "Domain", ""]
   );
   assert.equal(table.querySelector(".zgp-empty").hasAttribute("hidden"), true);
 });
@@ -783,7 +786,7 @@ test("the Add button stores the typed site and clears the field", () => {
   world.api.onTableClick(world.window, { target: add });
 
   assert.deepEqual(world.stored(), [
-    { host: "youtube.com", tabs: true, links: false, paths: [] },
+    { host: "youtube.com", tabs: true, links: false, domain: false, paths: [] },
   ]);
   assert.equal(table.querySelectorAll(".zgp-row").length, 1);
   assert.equal(input.value, "");
@@ -820,7 +823,7 @@ test("a switch in the table saves immediately", () => {
   world.api.onTableChange(world.window, { target: linksBox });
 
   assert.deepEqual(world.stored(), [
-    { host: "example.com", tabs: true, links: true, paths: [] },
+    { host: "example.com", tabs: true, links: true, domain: false, paths: [] },
   ]);
 });
 

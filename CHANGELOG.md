@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.13 — 2026-10-27
+
+- A site row has a third switch, **Domain**, the per-site form of `Same Domain Only`: pages opened from that site glance only while they stay in it. It reads the tab that started the open rather than the address being opened, because a row already answers only for its own domain, so a target-side reading would have been a switch that did nothing. Subdomains still count as the same site. Off on every row, shipped ones included.
+- The settings screenshot gains the fourth column, rendered from the shipped table stylesheet.
+
 ## 1.0.12 — 2026-10-27
 
 - A preset added in a later version now reaches a list that already exists. Each shipped site is offered once, ever, and recorded as offered, so Feedly appears on an install that predates it while a row you deleted stays deleted.
