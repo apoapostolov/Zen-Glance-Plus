@@ -183,6 +183,7 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
   const document = createDocument();
   const windowListeners = new Map();
   const sheetCalls = [];
+  const intervals = [];
 
   const windowObject = {
     innerWidth: 1200,
@@ -192,10 +193,18 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
       AUTHOR_SHEET: 2,
       loadSheetUsingURIString: (url, type) => sheetCalls.push({ url, type }),
     },
+    location: { href: "about:preferences" },
     addEventListener: (type, handler) => windowListeners.set(type, handler),
     setTimeout: handler => {
       handler();
       return 1;
+    },
+    setInterval: handler => {
+      intervals.push(handler);
+      return intervals.length;
+    },
+    clearInterval: id => {
+      intervals[id - 1] = null;
     },
   };
 
@@ -250,6 +259,13 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
     document,
     stored,
     withAnchor,
+    tickIntervals: (times = 1) => {
+      for (let i = 0; i < times; i += 1) {
+        for (const handler of intervals) {
+          handler?.();
+        }
+      }
+    },
     sheetCalls,
     setPref: (name, value) => prefMap.set(name, value),
   };
@@ -259,6 +275,29 @@ function createWorld({ domains = [], prefs = {}, fresh = false } = {}) {
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
+
+test("the table lands when the settings page builds its place late", () => {
+  // A restored settings tab draws its sections during startup, before the mod
+  // gets there, and then nothing mutates again — so the retry has to be a timer.
+  const world = createWorld({ fresh: true });
+  world.api.hookPreferences({ contentWindow: world.window });
+
+  assert.equal(
+    world.document.getElementById("zen-glance-plus-domains-table"),
+    null,
+    "there is nothing to place it in yet"
+  );
+
+  const place = world.document.createElementNS("http://www.w3.org/1999/xhtml", "vbox");
+  place.id = "zen-glance-plus-domains";
+  world.document.documentElement.appendChild(place);
+
+  world.tickIntervals();
+  assert.ok(
+    world.document.getElementById("zen-glance-plus-domains-table"),
+    "the timer places it once the page has a place for it"
+  );
+});
 
 test("a pasted address is reduced to its site", () => {
   const { api } = createWorld();

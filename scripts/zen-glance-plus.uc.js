@@ -1143,7 +1143,8 @@
 
   const styledWindows = new WeakSet();
   const hookedWindows = new WeakSet();
-  const missingAnchorLogged = new WeakSet();
+  const prefsAttempts = new WeakMap();
+  const prefsTimers = new Map();
 
   /** This script's own folder, so the sheet travels with the mod wherever it sits. */
   function scriptFolderUrl() {
@@ -1420,9 +1421,12 @@
       loadTableStyles(win);
       return true;
     }
-    if (!missingAnchorLogged.has(win)) {
-      missingAnchorLogged.add(win);
-      trace(`table: no place for it in ${settingsDocuments(win).length} documents`);
+    const attempts = (prefsAttempts.get(win) ?? 0) + 1;
+    prefsAttempts.set(win, attempts);
+    if (attempts === 1 || attempts % 8 === 0) {
+      trace(
+        `table: no place for it in ${settingsDocuments(win).length} documents, attempt ${attempts}`
+      );
     }
     return false;
   }
@@ -1463,6 +1467,19 @@
     // A mod's settings rows are built when its Configure dialog opens, which
     // is not always a mutation the observer sees first. A click is.
     win.addEventListener("click", check, true);
+    // A restored settings tab draws its sections during startup, before this
+    // code is reached, and then nothing mutates again. Ask on a timer as well,
+    // until the table lands or the budget runs out.
+    if (typeof win.setInterval === "function" && !prefsTimers.has(win)) {
+      const id = win.setInterval(() => {
+        const attempts = prefsAttempts.get(win) ?? 0;
+        if (injectTable(win) || attempts >= 60) {
+          win.clearInterval?.(id);
+          prefsTimers.delete(win);
+        }
+      }, 250);
+      prefsTimers.set(win, { win, id });
+    }
   }
 
   function hookPreferences(browser) {
@@ -1576,6 +1593,20 @@
     gBrowser.tabContainer.addEventListener("TabSelect", onTabSelect, true);
     watchPreferencesTabs();
     scanPreferencesTabs();
+    // A restored settings tab can be reached through a content window that the
+    // real page later replaces, and that new window is not the one that was
+    // hooked. Look again for a while after start, then let it be.
+    if (typeof setInterval === "function") {
+      let scans = 0;
+      state.prefsScan = setInterval(() => {
+        scans += 1;
+        scanPreferencesTabs();
+        if (scans >= 40) {
+          clearInterval(state.prefsScan);
+          state.prefsScan = null;
+        }
+      }, 500);
+    }
     window.addEventListener(
       "unload",
       () => {
@@ -1644,6 +1675,18 @@
     }
     gBrowser.tabContainer.removeEventListener("TabOpen", onTabOpen, true);
     gBrowser.tabContainer.removeEventListener("TabSelect", onTabSelect, true);
+    if (state.prefsScan) {
+      clearInterval(state.prefsScan);
+      state.prefsScan = null;
+    }
+    for (const entry of prefsTimers.values()) {
+      try {
+        entry.win.clearInterval?.(entry.id);
+      } catch (e) {
+        /* the window is gone, and its timers went with it */
+      }
+    }
+    prefsTimers.clear();
   }
 
   const api = {
@@ -1681,6 +1724,7 @@
     buildTable,
     fillRows,
     injectTable,
+    hookPreferences,
     rerender,
     onTableClick,
     onTableChange,

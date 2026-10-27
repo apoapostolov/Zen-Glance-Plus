@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.17 — 2026-10-27
+
+- The Sites table was missing from the settings page after an install and a fresh session. The mod asked once, then watched the page for changes, which covers a page that is still drawing — but a restored settings tab draws before the mod is reached, and after that nothing changes, so the one failed attempt stood. It now asks again on a timer for fifteen seconds, and looks for a settings tab again for twenty seconds after the window starts, which also covers a tab whose content window is replaced by the real page.
+- The log says how many attempts a settings page took, and whether it was ever placed, so a repeat of this is a log line rather than a guess.
+
 ## 1.0.16 — 2026-10-27
 
 - A tab the browser opens for itself is not a Glance any more. With no normal tabs left open, the selected tab is a pinned one, and `parentFor` fell back to the selected tab when a tab carried no opener, so the sidebar's plus button looked like a link opened from that pinned tab. Only a tab that names its opener counts now: `openerBrowser` from Firefox, or the tab Zen passes to its own check. Ctrl+T, the plus button, a restored session, and the first tab in an empty workspace all open as tabs.
