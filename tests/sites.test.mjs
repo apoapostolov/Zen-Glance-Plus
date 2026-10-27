@@ -274,8 +274,8 @@ test("a fresh profile ships the popular sites, configured", () => {
   const rules = world.api.readDomains();
   const hosts = rules.map(rule => rule.host);
 
-  assert.equal(rules.length, 7);
-  for (const host of ["reddit.com", "x.com", "facebook.com", "youtube.com", "instagram.com", "github.com", "news.ycombinator.com"]) {
+  assert.equal(rules.length, 6);
+  for (const host of ["reddit.com", "x.com", "facebook.com", "youtube.com", "instagram.com", "github.com"]) {
     assert.ok(hosts.includes(host), "missing " + host);
   }
   for (const rule of rules) {
@@ -285,7 +285,7 @@ test("a fresh profile ships the popular sites, configured", () => {
   }
 
   // Seeded once into the pref, so the table shows them on first open.
-  assert.equal(world.stored().length, 7);
+  assert.equal(world.stored().length, 6);
 
   const reddit = rules.find(rule => rule.host === "reddit.com");
   assert.equal(world.api.linkMatchesRule(reddit, new URL("https://www.reddit.com/r/zen/comments/1abc/title/")), true);

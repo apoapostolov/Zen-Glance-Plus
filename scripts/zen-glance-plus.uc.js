@@ -35,7 +35,6 @@
     { host: "youtube.com", tabs: true, links: true, paths: ["/watch*", "/shorts/*"] },
     { host: "instagram.com", tabs: true, links: true, paths: ["/p/*", "/reel/*"] },
     { host: "github.com", tabs: true, links: true, paths: ["*/issues/*", "*/pull/*", "*/discussions/*"] },
-    { host: "news.ycombinator.com", tabs: true, links: true, paths: ["/item?id=*"] },
   ];
 
   const PREF = {

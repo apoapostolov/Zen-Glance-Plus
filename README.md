@@ -1,8 +1,28 @@
-# Glance Plus
+<p align="center">
+  <img src="assets/icon.png" alt="Glance Plus" width="150" height="150">
+</p>
+
+<h1 align="center">Glance Plus</h1>
+
+<p align="center">
+  <strong>Zen's Glance, without the gesture.</strong><br>
+  A new tab opens over the page you are reading instead of replacing it, and each site decides which of its pages are worth one.
+</p>
+
+<p align="center">
+  <a href="https://github.com/apoapostolov/Zen-Glance-Plus/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/apoapostolov/Zen-Glance-Plus?style=for-the-badge&color=5B8CFF"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/apoapostolov/Zen-Glance-Plus?style=for-the-badge&color=5B8CFF"></a>
+  <a href="https://github.com/zen-browser/desktop"><img alt="Zen 1.24t" src="https://img.shields.io/badge/zen-1.24t-5B8CFF?style=for-the-badge"></a>
+  <img alt="Sine mod" src="https://img.shields.io/badge/sine-mod-5B8CFF?style=for-the-badge">
+</p>
+
+<p align="center">
+  <img src="assets/settings.png" alt="Glance Plus settings: five switches by tab kind, and a table of sites with their link patterns" width="760">
+</p>
+
+## What it changes
 
 Zen's Glance shows a page over the tab you are on. Stock Zen only raises it for a gesture: a modifier click on a link, a bookmark or search result with the modifier held, or a link that leaves an essential tab. Glance Plus makes the Glance the ordinary way a page opens, decided by the kind of tab it came from and, per site, by the kind of page it is.
-
-![Glance Plus settings](assets/settings.png)
 
 ## Install
 
@@ -30,7 +50,7 @@ Add a domain, and its row has a switch for the site's new tabs and a switch for 
 
 Changes save as you make them and apply to the next page you open.
 
-The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com, github.com and news.ycombinator.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
+The table starts populated: reddit.com, x.com, facebook.com, youtube.com, instagram.com and github.com, each row narrowed to that site's content pages — a post, a status, a video, an issue, a comment thread — so a fresh install glances something before you touch a setting. Those rows are written once, on the first start after install. Delete one and it stays deleted; the defaults never come back.
 
 ### Link patterns
 
