@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6 — 2026-10-27
+
+- The page-holding behaviour from 1.0.5 is gone. Keeping a Glance invisible until it painted traded a blank panel for a late panel, which is worse than watching the page arrive. A Glance shows its page as it loads, as it did in 1.0.4, and the open is still timed in the log.
+- The log now reports the settings table: whether the Sites anchor was found and how many site rows it drew, or that there was no anchor to draw under.
+
 ## 1.0.5 — 2026-10-27
 
 - A Glance no longer shows an empty panel while its page loads. The page stays invisible until it has painted, so the tab behind it stays readable, and the log now records how long the open took, from the decision to `DOMContentLoaded` and `load`.

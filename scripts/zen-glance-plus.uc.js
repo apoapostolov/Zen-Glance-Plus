@@ -491,42 +491,11 @@
     typeof performance !== "undefined" && performance?.now ? performance.now() : Date.now();
 
   /**
-   * Holds a Glance's page back until it has something to show. Opening one
-   * otherwise paints an empty panel first and fills it seconds later, which is
-   * what a slow page looks like when you are watching it load.
-   */
-  function holdUntilPainted(tab) {
-    const browser = tab?.linkedBrowser;
-    if (!browser?.style || typeof browser.addEventListener !== "function") {
-      return;
-    }
-    browser.style.opacity = "0";
-    let revealed = false;
-    const reveal = () => {
-      if (revealed) {
-        return;
-      }
-      revealed = true;
-      browser.style.transition = "opacity 140ms ease-out";
-      browser.style.opacity = "1";
-      setTimeout(() => {
-        browser.style.transition = "";
-        browser.style.opacity = "";
-      }, 500);
-    };
-    // A page that never paints must not stay invisible.
-    setTimeout(reveal, 6000);
-    const done = () => reveal();
-    browser.addEventListener("pageshow", done, { once: true });
-    browser.addEventListener("DOMContentLoaded", done, { once: true });
-  }
-
-  /**
    * Times a Glance from the decision to paint, and records whether its browser
    * element survived being moved into the parent tab: a replaced browser means
    * the page was loaded twice, which is a fault to fix, not a slow page.
    */
-  function watchPaint(tab, url, startedAt) {
+  function watchPaint(tab, url, startedAt = nowMs()) {
     const browser = tab?.linkedBrowser;
     if (!browser || typeof browser.addEventListener !== "function") {
       return;
@@ -558,11 +527,6 @@
     setTimeout(() => report("timeout"), 15000);
   }
 
-  function watchGlance(tab, url, startedAt = nowMs()) {
-    holdUntilPainted(tab);
-    watchPaint(tab, url, startedAt);
-  }
-
   /**
    * A link that opens a new tab from inside a page arrives at addTab as
    * about:blank: the tab is created first and the content loads it itself, so
@@ -586,7 +550,7 @@
       const startedAt = nowMs();
       // Zen converts the tab itself right after this answer; watch it once it
       // is in place so the timings describe the real open.
-      Promise.resolve().then(() => watchGlance(tab, spec, startedAt));
+      Promise.resolve().then(() => watchPaint(tab, spec, startedAt));
     }
     return Boolean(plan);
   }
@@ -663,7 +627,7 @@
         tab,
         manager.getTabOrGlanceParent?.(plan.parent) ?? plan.parent
       );
-      watchGlance(tab, plan.url);
+      watchPaint(tab, plan.url);
     } catch (e) {
       console.error("[zen-glance-plus] could not open the Glance", e);
     }
@@ -1012,6 +976,7 @@
 
   const styledWindows = new WeakSet();
   const hookedWindows = new WeakSet();
+  const missingAnchorLogged = new WeakSet();
 
   /** This script's own folder, so the sheet travels with the mod wherever it sits. */
   function scriptFolderUrl() {
@@ -1177,10 +1142,19 @@
       return false;
     }
     const anchor = doc.getElementById(UI_ANCHOR);
-    if (!anchor || doc.getElementById(UI_TABLE)) {
+    if (!anchor) {
+      if (!missingAnchorLogged.has(win)) {
+        missingAnchorLogged.add(win);
+        trace("table: no Sites anchor on the settings page");
+      }
       return false;
     }
-    const table = buildTable(doc, readDomains());
+    if (doc.getElementById(UI_TABLE)) {
+      return false;
+    }
+    const domains = readDomains();
+    const table = buildTable(doc, domains);
+    trace(`table: ${domains.length} site rows`);
     if (typeof anchor.after === "function") {
       anchor.after(table);
     } else {
@@ -1239,6 +1213,7 @@
       return;
     }
     const ready = () => {
+      trace("prefs window ready");
       injectTable(win);
       watchPreferencesWindow(win);
     };
