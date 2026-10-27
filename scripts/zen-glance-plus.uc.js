@@ -671,8 +671,12 @@
 
     const row = el(doc, "div", "zgp-row");
 
-    const site = el(doc, "button", "zgp-site");
-    site.setAttribute("type", "button");
+    // A span, not a button: the settings page's own button styles centre their
+    // content and refuse to shrink, which squashed the name into the middle of
+    // the row and pushed the remove control past the panel edge.
+    const site = el(doc, "span", "zgp-site");
+    site.setAttribute("role", "button");
+    site.setAttribute("tabindex", "0");
     site.setAttribute("data-act", "toggle");
     site.setAttribute("aria-expanded", String(expandedHosts.has(rule.host)));
     site.setAttribute(
@@ -702,8 +706,9 @@
       return wrapper;
     };
 
-    const remove = el(doc, "button", "zgp-remove");
-    remove.setAttribute("type", "button");
+    const remove = el(doc, "span", "zgp-remove");
+    remove.setAttribute("role", "button");
+    remove.setAttribute("tabindex", "0");
     remove.setAttribute("data-act", "remove");
     remove.setAttribute("aria-label", `Remove ${rule.host}`);
     remove.setAttribute("title", `Remove ${rule.host}`);
@@ -950,7 +955,7 @@
   }
 
   function onTableKeydown(win, event) {
-    if (event.key !== "Enter") {
+    if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
     const table = win.document.getElementById(UI_TABLE);
@@ -958,6 +963,15 @@
       return;
     }
     const target = event.target;
+    const action = target?.getAttribute?.("data-act");
+    if (action === "toggle" || action === "remove") {
+      event.preventDefault();
+      onTableClick(win, { target });
+      return;
+    }
+    if (event.key !== "Enter") {
+      return;
+    }
     const entry = target?.closest?.(".zgp-entry");
     const pathInput = entry?.querySelector?.(".zgp-pathinput");
     if (pathInput && target === pathInput) {

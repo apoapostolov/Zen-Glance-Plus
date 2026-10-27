@@ -315,6 +315,46 @@ test("a stored list is never replaced by the defaults", () => {
   assert.equal(rules[0].tabs, false);
 });
 
+test("the site and remove controls are spans the settings page cannot restyle", () => {
+  const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false, paths: [] }] });
+  const table = world.withAnchor();
+  const site = table.querySelector(".zgp-site");
+  const remove = table.querySelector(".zgp-remove");
+
+  assert.equal(site.tagName.toLowerCase(), "span");
+  assert.equal(remove.tagName.toLowerCase(), "span");
+  assert.equal(site.getAttribute("role"), "button");
+  assert.equal(site.getAttribute("tabindex"), "0");
+  assert.equal(remove.getAttribute("role"), "button");
+  assert.equal(remove.getAttribute("tabindex"), "0");
+});
+
+test("Space opens a row, as a button would", () => {
+  const world = createWorld({ domains: [{ host: "example.com", tabs: true, links: false, paths: [] }] });
+  const table = world.withAnchor();
+  const site = table.querySelector(".zgp-site");
+  assert.equal(site.getAttribute("aria-expanded"), "false");
+
+  world.api.onTableKeydown(world.window, { key: " ", target: site, preventDefault() {} });
+  const again = table.querySelector(".zgp-site");
+  assert.equal(again.getAttribute("aria-expanded"), "true");
+});
+
+test("Space removes the row it belongs to", () => {
+  const world = createWorld({
+    domains: [
+      { host: "example.com", tabs: true, links: false, paths: [] },
+      { host: "other.test", tabs: true, links: false, paths: [] },
+    ],
+  });
+  const table = world.withAnchor();
+  const remove = table.querySelector(".zgp-remove");
+  world.api.onTableKeydown(world.window, { key: " ", target: remove, preventDefault() {} });
+
+  assert.equal(world.stored().length, 1);
+  assert.equal(world.stored()[0].host, "other.test");
+});
+
 /* --------------------------------------------------------- link patterns */
 
 test("a link pattern keeps only the path, and matches from the root", () => {

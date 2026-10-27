@@ -13,6 +13,15 @@
   margin-block: 4px 10px;
   font: inherit;
   color: inherit;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* The settings page styles bare buttons and labels for its own layout, so
+ * every control here states its own box and keeps its content at the start. */
+#zen-glance-plus-domains-table,
+#zen-glance-plus-domains-table * {
+  box-sizing: border-box;
 }
 
 #zen-glance-plus-domains-table .zgp-add {
@@ -37,8 +46,7 @@
   outline-offset: 1px;
 }
 
-#zen-glance-plus-domains-table .zgp-addbutton,
-#zen-glance-plus-domains-table .zgp-remove {
+#zen-glance-plus-domains-table .zgp-addbutton {
   padding: 5px 10px;
   border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
   border-radius: 6px;
@@ -48,37 +56,62 @@
   cursor: pointer;
 }
 
-#zen-glance-plus-domains-table .zgp-addbutton:hover,
-#zen-glance-plus-domains-table .zgp-remove:hover {
+#zen-glance-plus-domains-table .zgp-addbutton:hover {
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
 
+/* A square, borderless glyph: it marks a row, it is not a form control. */
 #zen-glance-plus-domains-table .zgp-remove {
-  padding: 2px 8px;
-  color: color-mix(in srgb, currentColor 65%, transparent);
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#zen-glance-plus-domains-table .zgp-remove:hover,
+#zen-glance-plus-domains-table .zgp-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
 }
 
 #zen-glance-plus-domains-table .zgp-head,
 #zen-glance-plus-domains-table .zgp-row {
   display: grid;
-  grid-template-columns: 1fr 72px 72px 28px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 56px 56px 32px;
+  column-gap: 8px;
   align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+#zen-glance-plus-domains-table .zgp-row {
+  padding-block: 4px;
+  border-radius: 6px;
 }
 
 #zen-glance-plus-domains-table .zgp-head {
+  padding-block: 2px 4px;
   font-size: 0.85em;
   opacity: 0.75;
 }
 
 #zen-glance-plus-domains-table .zgp-headcell:nth-child(2),
-#zen-glance-plus-domains-table .zgp-headcell:nth-child(3) {
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(3),
+#zen-glance-plus-domains-table .zgp-headcell:nth-child(4) {
+  display: flex;
+  justify-content: center;
   text-align: center;
-}
-
-#zen-glance-plus-domains-table .zgp-row {
-  padding: 4px 6px;
-  border-radius: 6px;
 }
 
 #zen-glance-plus-domains-table .zgp-row:hover {
@@ -86,24 +119,34 @@
 }
 
 #zen-glance-plus-domains-table .zgp-site {
-  overflow: hidden;
-  white-space: nowrap;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
+  width: 100%;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: start;
   font: inherit;
   color: inherit;
-  text-align: left;
   background: none;
   border: 0;
   padding: 2px 0;
   cursor: pointer;
 }
 
+#zen-glance-plus-domains-table .zgp-site:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 #zen-glance-plus-domains-table .zgp-site-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: start;
 }
 
 #zen-glance-plus-domains-table .zgp-badge {

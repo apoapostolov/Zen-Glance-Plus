@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 — 2026-10-27
+
+- The site table lays out correctly inside the settings page. The site name and the remove control are no longer buttons, so the page's own control styling cannot centre the name in the middle of the row or refuse to let it shrink; the name starts at the left edge and ellipsises when the panel is narrow.
+- The remove control is a square, borderless glyph with its own hover, and the row keeps clear space at the panel's right edge instead of pressing the glyph against it.
+- Header cells and switches share the same grid and the same padding, so each switch sits under its heading.
+
 ## 1.0.1 — 2026-10-27
 
 - The script announces itself in the Browser Console and exposes `window.__zenGlancePlus.status()`, which reports whether it started, whether `gBrowser.addTab` is wrapped, whether the Glance manager is present, how many sites are configured and what each switch is set to. A script that never loads and a script that loads and declines to act now look different from the outside.
